@@ -1,6 +1,8 @@
 import csv
 import io
+import os
 import secrets
+import socket
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -119,6 +121,22 @@ async def bulk_create(
         media_type='text/csv',
         headers={'Content-Disposition': f'attachment; filename="radix-{ssid}.csv"'},
     )
+
+
+# -- settings -----------------------------------------------------------------
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    try:
+        server_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        server_ip = "unknown"
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "radius_ip": server_ip,
+        "radius_port": 1812,
+        "radius_secret": os.environ.get("RADIUS_SECRET", ""),
+    })
 
 
 # -- logs ---------------------------------------------------------------------

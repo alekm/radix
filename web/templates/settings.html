@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Settings — RADIX{% endblock %}
+{% block heading %}Settings{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width: 540px;">
+  <div class="card-header">
+    <span class="card-title">RADIUS Server</span>
+  </div>
+  <div class="card-body">
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+        <td style="padding:8px 0; color:var(--text-muted); font-size:13px; width:140px;">Server IP</td>
+        <td class="mono" style="padding:8px 0; font-size:14px;">{{ radius_ip }}</td>
+      </tr>
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:8px 0; color:var(--text-muted); font-size:13px;">Auth Port</td>
+        <td class="mono" style="padding:8px 0; font-size:14px;">{{ radius_port }}</td>
+      </tr>
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:8px 0; color:var(--text-muted); font-size:13px;">Shared Secret</td>
+        <td style="padding:8px 0;">
+          <span class="mono" id="secret-val" style="font-size:14px; filter:blur(4px); cursor:pointer;"
+                onclick="this.style.filter='none'; document.getElementById('secret-toggle').textContent='Hide';">
+            {{ radius_secret }}
+          </span>
+          <a id="secret-toggle" href="#" style="margin-left:10px; font-size:12px;"
+             onclick="event.preventDefault();
+                      var el=document.getElementById('secret-val');
+                      if(el.style.filter){el.style.filter='';this.textContent='Hide';}
+                      else{el.style.filter='blur(4px)';this.textContent='Show';}">
+            Show
+          </a>
+        </td>
+      </tr>
+    </table>
+    <p class="text-muted" style="font-size:11px; margin-top:16px;">
+      Configure these values on your AP controller when adding this server as a RADIUS authentication source.
+      The shared secret is set via the <span class="mono">RADIUS_SECRET</span> environment variable.
+    </p>
+  </div>
+</div>
+
+{% endblock %}
