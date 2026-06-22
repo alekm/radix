@@ -33,9 +33,8 @@ async def accounts_list(request: Request):
 async def accounts_create(
     username: str = Form(...),
     email: str = Form(""),
-    mac: str = Form(...),
 ):
-    db.create_account(username, email, mac)
+    db.create_account(username, email)
     return RedirectResponse("/accounts", status_code=303)
 
 

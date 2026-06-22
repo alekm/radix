@@ -12,36 +12,48 @@ PKE_LABEL = b"Pairwise key expansion\x00"
 
 
 def handle(attrs):
-    """Detect vendor, verify MIC, return reply dict or {'reject': True} or None."""
+    """Three-tier lookup: cache → known MAC binding → brute-force MIC scan."""
     vendor = _detect_vendor(attrs)
     if vendor is None:
         return None
 
-    mac   = attrs.get('Calling-Station-Id', '').lower().replace('-', ':')
-    ssid  = _get_ssid(vendor, attrs)
+    mac    = attrs.get('Calling-Station-Id', '').lower().replace('-', ':')
+    ssid   = _get_ssid(vendor, attrs)
     ap_mac = _get_ap_mac(vendor, attrs)
-
-    pmk, psk, vlan_id = _from_cache(mac, ssid)
-    cache_hit = pmk is not None
-    if pmk is None:
-        row = db.lookup_pmk(mac, ssid)
-        if row is None:
-            db.log_auth(mac, ssid, vendor, 'reject')
-            return {'reject': True}
-        pmk     = row['pmk_bytes']
-        psk     = row['psk']
-        vlan_id = row['vlan_id']
-        _to_cache(mac, ssid, pmk, psk, vlan_id)
-
     eapol_hex  = _get_eapol(vendor, attrs)
     anonce_hex = _get_anonce(vendor, attrs, eapol_hex)
 
-    if not _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex):
-        db.log_auth(mac, ssid, vendor, 'reject', cache_hit)
+    # Tier 1: in-memory cache
+    pmk, psk, vlan_id = _from_cache(mac, ssid)
+    if pmk is not None:
+        if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex):
+            db.log_auth(mac, ssid, vendor, 'accept', cache_hit=True)
+            return {'reply': _build_reply(vendor, pmk, psk, vlan_id)}
+        db.log_auth(mac, ssid, vendor, 'reject', cache_hit=True)
         return {'reject': True}
 
-    db.log_auth(mac, ssid, vendor, 'accept', cache_hit)
-    return {'reply': _build_reply(vendor, pmk, psk, vlan_id)}
+    # Tier 2: known MAC binding in DB
+    row = db.lookup_pmk_by_mac(mac, ssid)
+    if row is not None:
+        pmk = row['pmk_bytes']
+        if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex):
+            _to_cache(mac, ssid, pmk, row['psk'], row['vlan_id'])
+            db.log_auth(mac, ssid, vendor, 'accept', cache_hit=False)
+            return {'reply': _build_reply(vendor, pmk, row['psk'], row['vlan_id'])}
+        db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
+        return {'reject': True}
+
+    # Tier 3: new device — try every PMK for this SSID
+    for row in db.lookup_all_pmks(ssid):
+        pmk = row['pmk_bytes']
+        if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex):
+            db.bind_mac(row['id'], mac)
+            _to_cache(mac, ssid, pmk, row['psk'], row['vlan_id'])
+            db.log_auth(mac, ssid, vendor, 'accept', cache_hit=False)
+            return {'reply': _build_reply(vendor, pmk, row['psk'], row['vlan_id'])}
+
+    db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
+    return {'reject': True}
 
 
 # -- vendor detection ---------------------------------------------------------
@@ -133,12 +145,12 @@ def _build_reply(vendor, pmk, psk, vlan_id):
         reply['TPLink-EAPOL-Found-PMK'] = pmk.hex()
     elif vendor == 'ruckus':
         # SZ uses Ruckus-DPSK; ZD/Unleashed uses MS-MPPE-Recv-Key.
-        # TODO: distinguish SZ vs ZD via a request attribute (NAS type or VSA).
+        # TODO: distinguish SZ vs ZD via a request attribute.
         reply['Ruckus-DPSK'] = bytes([0]) + pmk
 
     if vlan_id:
-        reply['Tunnel-Type']            = '13'   # VLAN
-        reply['Tunnel-Medium-Type']     = '6'    # IEEE-802
+        reply['Tunnel-Type']             = '13'
+        reply['Tunnel-Medium-Type']      = '6'
         reply['Tunnel-Private-Group-Id'] = str(vlan_id)
 
     return reply

@@ -11,7 +11,6 @@
   <div>
     <div class="acct-name">{{ account.username }}</div>
     <div class="acct-meta">
-      <span class="mono">{{ account.mac }}</span>
       {% if account.email %}<span>{{ account.email }}</span>{% endif %}
       <span>Member since {{ account.created_at.strftime('%Y-%m-%d') }}</span>
     </div>
@@ -35,9 +34,12 @@
         </div>
         <div class="form-group grow">
           <label for="psk">PSK</label>
-          <input type="text" id="psk" name="psk" placeholder="Pre-shared key" required>
+          <div class="gap-8">
+            <input type="text" id="psk" name="psk" placeholder="Pre-shared key" required style="flex:1;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="generatePsk()">Generate</button>
+          </div>
         </div>
-        <div class="form-group" style="min-width: 100px;">
+        <div class="form-group" style="min-width: 90px;">
           <label for="vlan_id">VLAN ID</label>
           <input type="text" id="vlan_id" name="vlan_id" placeholder="100">
         </div>
@@ -46,7 +48,7 @@
         </div>
       </div>
       <p class="text-muted" style="font-size:11px; margin-top:8px;">
-        PMK will be pre-computed (PBKDF2-HMAC-SHA1, 4096 iter) and stored immediately.
+        PMK is pre-computed on save. MAC is learned automatically on first auth.
       </p>
     </form>
   </div>
@@ -66,6 +68,7 @@
           <th>PSK</th>
           <th>VLAN</th>
           <th>PMK</th>
+          <th>Bound MACs</th>
           <th>Assigned</th>
           <th></th>
         </tr>
@@ -81,6 +84,15 @@
             <span class="badge badge-accept">ready</span>
             {% else %}
             <span class="badge badge-reject">missing</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if p.macs %}
+              {% for mac in p.macs %}
+              <span class="mono" style="display:block; font-size:11px;">{{ mac }}</span>
+              {% endfor %}
+            {% else %}
+              <span class="text-muted" style="font-size:12px;">none yet</span>
             {% endif %}
           </td>
           <td class="mono text-muted">{{ p.created_at.strftime('%Y-%m-%d') }}</td>
@@ -100,5 +112,16 @@
   <div class="empty">No PSKs assigned yet.</div>
   {% endif %}
 </div>
+
+<script>
+function generatePsk() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let psk = '';
+  for (let i = 0; i < 20; i++) {
+    psk += chars[Math.floor(Math.random() * chars.length)];
+  }
+  document.getElementById('psk').value = psk;
+}
+</script>
 
 {% endblock %}

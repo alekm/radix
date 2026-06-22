@@ -51,9 +51,12 @@ def get_recent_logs(n=10):
 def get_accounts():
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
-            SELECT a.*, COUNT(pmk.id) AS psk_count
+            SELECT a.*,
+                   COUNT(DISTINCT pmk.id)  AS psk_count,
+                   COUNT(DISTINCT mb.mac)  AS device_count
             FROM accounts a
             LEFT JOIN pairwise_master_keys pmk ON pmk.account_id = a.id
+            LEFT JOIN mac_bindings mb ON mb.pmk_id = pmk.id
             GROUP BY a.id
             ORDER BY a.created_at DESC
         """)
@@ -68,23 +71,30 @@ def get_account(account_id):
         if account is None:
             return None, []
         cur.execute("""
-            SELECT * FROM pairwise_master_keys
-            WHERE account_id = %s
-            ORDER BY id DESC
+            SELECT pmk.*,
+                   COALESCE(
+                       array_agg(mb.mac ORDER BY mb.created_at)
+                       FILTER (WHERE mb.mac IS NOT NULL),
+                       '{}'
+                   ) AS macs
+            FROM pairwise_master_keys pmk
+            LEFT JOIN mac_bindings mb ON mb.pmk_id = pmk.id
+            WHERE pmk.account_id = %s
+            GROUP BY pmk.id
+            ORDER BY pmk.id DESC
         """, (account_id,))
         psks = cur.fetchall()
     return account, psks
 
 
-def create_account(username, email, mac):
-    mac = mac.lower().replace('-', ':').strip()
+def create_account(username, email):
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO accounts (username, email, mac)
-            VALUES (%s, %s, %s)
+            INSERT INTO accounts (username, email)
+            VALUES (%s, %s)
             RETURNING id
-        """, (username, email or None, mac))
+        """, (username, email or None))
         row = cur.fetchone()
     conn.commit()
     return row[0]

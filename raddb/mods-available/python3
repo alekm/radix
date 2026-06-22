@@ -1,7 +1,7 @@
 python3 {
-    module = hook
+    python_path = "${modconfdir}/${.:name}"
 
-    python_path = /etc/raddb/python
+    module = hook
 
     mod_authorize = hook
     func_authorize = authorize

@@ -2,11 +2,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     id          SERIAL PRIMARY KEY,
     username    TEXT NOT NULL,
     email       TEXT,
-    mac         TEXT NOT NULL UNIQUE,   -- client MAC, lowercase colon-separated
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX ON accounts (mac);
 
 CREATE TABLE IF NOT EXISTS pairwise_master_keys (
     id          SERIAL PRIMARY KEY,
@@ -14,12 +11,25 @@ CREATE TABLE IF NOT EXISTS pairwise_master_keys (
     psk         TEXT NOT NULL,
     ssid        TEXT NOT NULL,
     pmk_b64     TEXT NOT NULL,          -- base64(PBKDF2-HMAC-SHA1(psk, ssid, 4096, 32)), pre-computed by web UI
-    wlan_id     TEXT,                   -- vendor WLAN/AP group identifier (optional)
-    vlan_id     INTEGER,                -- 802.1Q VLAN tag to assign on accept (optional)
+    wlan_id     TEXT,
+    vlan_id     INTEGER,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON pairwise_master_keys (account_id, ssid);
+CREATE INDEX ON pairwise_master_keys (ssid);
+CREATE INDEX ON pairwise_master_keys (account_id);
+
+-- MACs are discovered dynamically on first auth and bound here.
+-- One PSK can bind to multiple MACs (e.g. phone + laptop sharing a PSK).
+CREATE TABLE IF NOT EXISTS mac_bindings (
+    id          SERIAL PRIMARY KEY,
+    pmk_id      INTEGER NOT NULL REFERENCES pairwise_master_keys(id) ON DELETE CASCADE,
+    mac         TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (mac, pmk_id)
+);
+
+CREATE INDEX ON mac_bindings (mac);
 
 CREATE TABLE IF NOT EXISTS auth_log (
     id          SERIAL PRIMARY KEY,
