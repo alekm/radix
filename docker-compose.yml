@@ -19,7 +19,7 @@ services:
   web:
     build: ./web
     ports:
-      - "8000:8000"
+      - "8050:8000"
     environment:
       DB_HOST: postgres
       DB_NAME: radix
