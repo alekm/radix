@@ -13,11 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY hook.py dpsk.py db.py /etc/freeradius/3.0/mods-config/python3/
 
 # FreeRADIUS config overlays
-COPY raddb/clients.conf          /etc/freeradius/3.0/clients.conf
+COPY raddb/clients.conf           /etc/freeradius/3.0/clients.conf
 COPY raddb/mods-available/python3 /etc/freeradius/3.0/mods-available/python3
 COPY raddb/sites-available/radix  /etc/freeradius/3.0/sites-available/radix
+COPY raddb/dictionary.tplink      /etc/freeradius/3.0/dictionary.tplink
 
 RUN ln -sf ../mods-available/python3 /etc/freeradius/3.0/mods-enabled/python3 \
+    && echo '$INCLUDE /etc/freeradius/3.0/dictionary.tplink' >> /etc/freeradius/3.0/dictionary \
     && ln -sf ../sites-available/radix /etc/freeradius/3.0/sites-enabled/radix \
     && rm -f /etc/freeradius/3.0/sites-enabled/default \
     && rm -f /etc/freeradius/3.0/sites-enabled/inner-tunnel \

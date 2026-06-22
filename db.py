@@ -18,6 +18,17 @@ def _get_conn():
     return _conn
 
 
+def reset_conn():
+    """Force-close and re-open the DB connection (called after a query error)."""
+    global _conn
+    try:
+        if _conn and not _conn.closed:
+            _conn.close()
+    except Exception:
+        pass
+    _conn = None
+
+
 def _row(row):
     return {
         'id':        row['id'],
@@ -54,6 +65,22 @@ def lookup_all_pmks(ssid):
     with _get_conn().cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute(sql, (ssid,))
         return [_row(r) for r in cur.fetchall()]
+
+
+def lookup_pmk_by_mac_only(mac):
+    """MAC auth path: return first bound PSK for this MAC (SSID unknown)."""
+    sql = """
+        SELECT pmk.id, pmk.psk, pmk.pmk_b64, pmk.vlan_id
+        FROM pairwise_master_keys pmk
+        JOIN mac_bindings mb ON mb.pmk_id = pmk.id
+        WHERE mb.mac = %s
+        ORDER BY pmk.id DESC
+        LIMIT 1
+    """
+    with _get_conn().cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        cur.execute(sql, (mac,))
+        row = cur.fetchone()
+    return _row(row) if row else None
 
 
 def bind_mac(pmk_id, mac):
