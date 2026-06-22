@@ -27,6 +27,11 @@
         </a>
       </li>
       <li>
+        <a href="/bulk" class="{{ 'active' if '/bulk' in request.url.path else '' }}">
+          <span class="nav-icon">◫</span> Bulk Create
+        </a>
+      </li>
+      <li>
         <a href="/logs" class="{{ 'active' if '/logs' in request.url.path else '' }}">
           <span class="nav-icon">◎</span> Auth Log
         </a>

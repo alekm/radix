@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Bulk Create — RADIX{% endblock %}
+{% block heading %}Bulk Create{% endblock %}
+
+{% block content %}
+
+<div class="card" style="max-width: 600px;">
+  <div class="card-header">
+    <span class="card-title">Import CSV</span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/bulk" enctype="multipart/form-data">
+      <div class="form-row" style="margin-bottom: 16px;">
+        <div class="form-group grow">
+          <label for="ssid">SSID</label>
+          <input type="text" id="ssid" name="ssid" placeholder="CorpWiFi" required>
+        </div>
+        <div class="form-group" style="min-width: 100px;">
+          <label for="vlan_id">VLAN ID</label>
+          <input type="text" id="vlan_id" name="vlan_id" placeholder="100">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="file">CSV File</label>
+        <input type="file" id="file" name="file" accept=".csv,text/csv" required>
+        <p class="text-muted" style="font-size:11px; margin-top:6px;">
+          Required column: <span class="mono">username</span> &nbsp;·&nbsp;
+          Optional: <span class="mono">email</span><br>
+          PSKs are auto-generated for every row.
+        </p>
+      </div>
+      <button type="submit" class="btn btn-primary">Import &amp; Download Credentials</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="max-width: 600px; margin-top: 20px;">
+  <div class="card-header">
+    <span class="card-title">CSV Format</span>
+  </div>
+  <div class="card-body">
+    <p class="text-muted" style="font-size:12px; margin-bottom: 10px;">
+      Minimal — username only:
+    </p>
+    <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username
+alice
+bob
+carol</pre>
+    <p class="text-muted" style="font-size:12px; margin: 14px 0 10px;">
+      With email:
+    </p>
+    <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username,email
+alice,alice@example.com
+bob,bob@example.com</pre>
+    <p class="text-muted" style="font-size:12px; margin-top: 14px;">
+      The downloaded CSV will contain: <span class="mono">username, email, ssid, psk</span>
+    </p>
+  </div>
+</div>
+
+{% endblock %}

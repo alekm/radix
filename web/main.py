@@ -1,5 +1,8 @@
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+import csv
+import io
+import secrets
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
@@ -8,6 +11,11 @@ import db
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+_PSK_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+
+def _generate_psk(length=20):
+    return ''.join(secrets.choice(_PSK_CHARS) for _ in range(length))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -71,6 +79,46 @@ async def psk_add(
 async def psk_revoke(account_id: int, psk_id: int):
     db.revoke_psk(psk_id)
     return RedirectResponse(f"/accounts/{account_id}", status_code=303)
+
+
+# -- bulk create --------------------------------------------------------------
+
+@app.get("/bulk", response_class=HTMLResponse)
+async def bulk_page(request: Request):
+    return templates.TemplateResponse("bulk.html", {"request": request})
+
+
+@app.post("/bulk")
+async def bulk_create(
+    ssid: str = Form(...),
+    vlan_id: str = Form(""),
+    file: UploadFile = File(...),
+):
+    content = await file.read()
+    text = content.decode('utf-8-sig')  # strip Excel BOM if present
+    reader = csv.DictReader(io.StringIO(text))
+
+    rows = []
+    for row in reader:
+        username = (row.get('username') or row.get('name') or '').strip()
+        email    = (row.get('email') or '').strip()
+        if not username:
+            continue
+        psk        = _generate_psk()
+        account_id = db.create_account(username, email)
+        db.add_psk(account_id, psk, ssid, vlan_id.strip() or None)
+        rows.append({'username': username, 'email': email, 'ssid': ssid, 'psk': psk})
+
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=['username', 'email', 'ssid', 'psk'])
+    writer.writeheader()
+    writer.writerows(rows)
+
+    return StreamingResponse(
+        iter([out.getvalue()]),
+        media_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="radix-{ssid}.csv"'},
+    )
 
 
 # -- logs ---------------------------------------------------------------------
