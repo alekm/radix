@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Accounts — RADIX{% endblock %}
+{% block heading %}Accounts{% endblock %}
+
+{% block content %}
+
+<div class="card" style="margin-bottom: 20px;">
+  <div class="card-header">
+    <span class="card-title">Add Account</span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/accounts">
+      <div class="form-row">
+        <div class="form-group grow">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="alice" required>
+        </div>
+        <div class="form-group grow">
+          <label for="email">Email</label>
+          <input type="text" id="email" name="email" placeholder="alice@example.com">
+        </div>
+        <div class="form-group grow">
+          <label for="mac">MAC Address</label>
+          <input type="text" id="mac" name="mac" placeholder="aa:bb:cc:dd:ee:ff" required>
+        </div>
+        <div class="form-group" style="justify-content: flex-end;">
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">All Accounts</span>
+    <span class="text-muted" style="font-size:12px;">{{ accounts|length }} total</span>
+  </div>
+  {% if accounts %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>MAC</th>
+          <th>Email</th>
+          <th>PSKs</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td><a href="/accounts/{{ a.id }}">{{ a.username }}</a></td>
+          <td class="mono">{{ a.mac }}</td>
+          <td class="text-muted">{{ a.email or '—' }}</td>
+          <td>{{ a.psk_count }}</td>
+          <td class="mono text-muted">{{ a.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="text-right">
+            <form method="post" action="/accounts/{{ a.id }}/delete"
+                  onsubmit="return confirm('Delete {{ a.username }}?')">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">No accounts yet. Add one above.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ account.username }} — RADIX{% endblock %}
+{% block heading %}{{ account.username }}{% endblock %}
+{% block header_action %}
+  <a href="/accounts" class="btn btn-outline btn-sm">← Accounts</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="acct-header">
+  <div>
+    <div class="acct-name">{{ account.username }}</div>
+    <div class="acct-meta">
+      <span class="mono">{{ account.mac }}</span>
+      {% if account.email %}<span>{{ account.email }}</span>{% endif %}
+      <span>Member since {{ account.created_at.strftime('%Y-%m-%d') }}</span>
+    </div>
+  </div>
+  <form method="post" action="/accounts/{{ account.id }}/delete"
+        onsubmit="return confirm('Delete {{ account.username }} and all their PSKs?')">
+    <button type="submit" class="btn btn-danger btn-sm">Delete account</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Assign PSK</span>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/accounts/{{ account.id }}/psks">
+      <div class="form-row">
+        <div class="form-group grow">
+          <label for="ssid">SSID</label>
+          <input type="text" id="ssid" name="ssid" placeholder="CorpWiFi" required>
+        </div>
+        <div class="form-group grow">
+          <label for="psk">PSK</label>
+          <input type="text" id="psk" name="psk" placeholder="Pre-shared key" required>
+        </div>
+        <div class="form-group" style="min-width: 100px;">
+          <label for="vlan_id">VLAN ID</label>
+          <input type="text" id="vlan_id" name="vlan_id" placeholder="100">
+        </div>
+        <div class="form-group" style="justify-content: flex-end;">
+          <button type="submit" class="btn btn-primary">Assign</button>
+        </div>
+      </div>
+      <p class="text-muted" style="font-size:11px; margin-top:8px;">
+        PMK will be pre-computed (PBKDF2-HMAC-SHA1, 4096 iter) and stored immediately.
+      </p>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">PSKs</span>
+    <span class="text-muted" style="font-size:12px;">{{ psks|length }} assigned</span>
+  </div>
+  {% if psks %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>SSID</th>
+          <th>PSK</th>
+          <th>VLAN</th>
+          <th>PMK</th>
+          <th>Assigned</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in psks %}
+        <tr>
+          <td>{{ p.ssid }}</td>
+          <td class="mono">{{ p.psk }}</td>
+          <td class="text-muted">{{ p.vlan_id or '—' }}</td>
+          <td>
+            {% if p.pmk_b64 %}
+            <span class="badge badge-accept">ready</span>
+            {% else %}
+            <span class="badge badge-reject">missing</span>
+            {% endif %}
+          </td>
+          <td class="mono text-muted">{{ p.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="text-right">
+            <form method="post"
+                  action="/accounts/{{ account.id }}/psks/{{ p.id }}/revoke"
+                  onsubmit="return confirm('Revoke this PSK?')">
+              <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">No PSKs assigned yet.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

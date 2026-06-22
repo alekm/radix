@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — RADIX{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.accounts }}</div>
+    <div class="stat-label">Accounts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.psks }}</div>
+    <div class="stat-label">Active PSKs</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value accent">{{ stats.auths_24h }}</div>
+    <div class="stat-label">Auths (24h)</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value {% if stats.rejects_24h > 0 %}danger{% endif %}">{{ stats.rejects_24h }}</div>
+    <div class="stat-label">Rejects (24h)</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">Recent Auth Events</span>
+    <a href="/logs" class="btn btn-outline btn-sm">View all</a>
+  </div>
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>MAC</th>
+          <th>SSID</th>
+          <th>Vendor</th>
+          <th>Result</th>
+          <th>Cache</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="mono">{{ log.created_at.strftime('%H:%M:%S') }}</td>
+          <td class="mono">{{ log.mac }}</td>
+          <td>{{ log.ssid or '—' }}</td>
+          <td class="text-muted">{{ log.vendor or '—' }}</td>
+          <td><span class="badge badge-{{ log.result }}">{{ log.result }}</span></td>
+          <td>
+            {% if log.cache_hit %}
+            <span class="badge badge-hit">hit</span>
+            {% else %}
+            <span class="badge badge-miss">miss</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">No auth events yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

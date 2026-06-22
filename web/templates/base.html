@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}RADIX{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <span class="brand-name">RADIX</span>
+    <span class="brand-sub">DPSK Manager</span>
+  </div>
+  <div class="nav-section">
+    <p class="nav-label">Navigation</p>
+    <ul class="nav-links">
+      <li>
+        <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">
+          <span class="nav-icon">◈</span> Dashboard
+        </a>
+      </li>
+      <li>
+        <a href="/accounts" class="{{ 'active' if '/accounts' in request.url.path else '' }}">
+          <span class="nav-icon">◉</span> Accounts
+        </a>
+      </li>
+      <li>
+        <a href="/logs" class="{{ 'active' if '/logs' in request.url.path else '' }}">
+          <span class="nav-icon">◎</span> Auth Log
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<main class="content">
+  <header class="page-header">
+    <span class="page-title">{% block heading %}{% endblock %}</span>
+    {% block header_action %}{% endblock %}
+  </header>
+  <div class="page-body">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+python3 {
+    module = hook
+
+    python_path = /etc/raddb/python
+
+    mod_authorize = hook
+    func_authorize = authorize
+
+    mod_post_auth = hook
+    func_post_auth = post_auth
+}

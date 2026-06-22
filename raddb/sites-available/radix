@@ -1,0 +1,25 @@
+server radix {
+
+    listen {
+        type        = auth
+        ipaddr      = *
+        port        = 1812
+    }
+
+    authorize {
+        python3
+    }
+
+    authenticate {
+        # The AP handles the 4-way handshake; we validate MIC and return PMK.
+        # No EAP processing required here.
+    }
+
+    post-auth {
+        python3
+
+        Post-Auth-Type REJECT {
+            python3
+        }
+    }
+}

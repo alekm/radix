@@ -1,0 +1,49 @@
+services:
+  radius:
+    build: .
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: radix
+      DB_USER: radix
+      DB_PASSWORD: ${DB_PASSWORD}
+      RADIUS_SECRET: ${RADIUS_SECRET}
+      PMK_CACHE_TTL: ${PMK_CACHE_TTL:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: radix
+      DB_USER: radix
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: radix
+      POSTGRES_USER: radix
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radix"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

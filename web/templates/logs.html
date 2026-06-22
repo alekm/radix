@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Auth Log — RADIX{% endblock %}
+{% block heading %}Auth Log{% endblock %}
+
+{% block content %}
+
+<div class="filter-bar">
+  <form method="get" action="/logs">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="mac">MAC</label>
+        <input type="text" id="mac" name="mac" value="{{ filters.mac }}" placeholder="aa:bb:cc…">
+      </div>
+      <div class="form-group">
+        <label for="ssid">SSID</label>
+        <input type="text" id="ssid" name="ssid" value="{{ filters.ssid }}" placeholder="CorpWiFi">
+      </div>
+      <div class="form-group">
+        <label for="result">Result</label>
+        <select id="result" name="result">
+          <option value="">All</option>
+          <option value="accept" {{ 'selected' if filters.result == 'accept' }}>Accept</option>
+          <option value="reject" {{ 'selected' if filters.result == 'reject' }}>Reject</option>
+          <option value="noop"   {{ 'selected' if filters.result == 'noop' }}>Noop</option>
+        </select>
+      </div>
+      <div class="form-group" style="justify-content: flex-end;">
+        <button type="submit" class="btn btn-outline">Filter</button>
+      </div>
+      {% if filters.mac or filters.ssid or filters.result %}
+      <div class="form-group" style="justify-content: flex-end;">
+        <a href="/logs" class="btn btn-outline">Clear</a>
+      </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if logs %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>MAC</th>
+        <th>SSID</th>
+        <th>Vendor</th>
+        <th>Result</th>
+        <th>Cache</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td class="mono">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="mono">{{ log.mac }}</td>
+        <td>{{ log.ssid or '—' }}</td>
+        <td class="text-muted">{{ log.vendor or '—' }}</td>
+        <td><span class="badge badge-{{ log.result }}">{{ log.result }}</span></td>
+        <td>
+          {% if log.cache_hit %}
+          <span class="badge badge-hit">hit</span>
+          {% else %}
+          <span class="badge badge-miss">miss</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No matching log entries.</div>
+{% endif %}
+
+{% endblock %}
