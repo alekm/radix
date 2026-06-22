@@ -127,14 +127,10 @@ async def bulk_create(
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    try:
-        server_ip = socket.gethostbyname(socket.gethostname())
-    except Exception:
-        server_ip = "unknown"
     return templates.TemplateResponse("settings.html", {
         "request": request,
-        "radius_ip": server_ip,
-        "radius_port": 1812,
+        "radius_ip": os.environ.get("RADIUS_HOST", "—"),
+        "radius_port": int(os.environ.get("RADIUS_PORT", 1812)),
         "radius_secret": os.environ.get("RADIUS_SECRET", ""),
     })
 

@@ -25,6 +25,9 @@ services:
       DB_NAME: radix
       DB_USER: radix
       DB_PASSWORD: ${DB_PASSWORD}
+      RADIUS_SECRET: ${RADIUS_SECRET}
+      RADIUS_HOST: ${RADIUS_HOST:-}
+      RADIUS_PORT: 1812
     depends_on:
       postgres:
         condition: service_healthy
