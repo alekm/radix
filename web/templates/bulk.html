@@ -15,18 +15,14 @@
           <label for="ssid">SSID</label>
           <input type="text" id="ssid" name="ssid" placeholder="CorpWiFi" required>
         </div>
-        <div class="form-group" style="min-width: 100px;">
-          <label for="vlan_id">VLAN ID</label>
-          <input type="text" id="vlan_id" name="vlan_id" placeholder="100">
-        </div>
       </div>
       <div class="form-group" style="margin-bottom: 20px;">
         <label for="file">CSV File</label>
         <input type="file" id="file" name="file" accept=".csv,text/csv" required>
         <p class="text-muted" style="font-size:11px; margin-top:6px;">
-          Required column: <span class="mono">username</span> &nbsp;·&nbsp;
-          Optional: <span class="mono">email</span><br>
-          PSKs are auto-generated for every row.
+          Required: <span class="mono">username</span> &nbsp;·&nbsp;
+          Optional: <span class="mono">email</span>, <span class="mono">vlan</span><br>
+          PSKs are auto-generated per row. VLAN is per-account.
         </p>
       </div>
       <button type="submit" class="btn btn-primary">Import &amp; Download Credentials</button>
@@ -40,20 +36,20 @@
   </div>
   <div class="card-body">
     <p class="text-muted" style="font-size:12px; margin-bottom: 10px;">
+      With per-account VLAN segmentation:
+    </p>
+    <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username,email,vlan
+alice,alice@example.com,100
+bob,bob@example.com,200
+carol,carol@example.com,100</pre>
+    <p class="text-muted" style="font-size:12px; margin: 14px 0 10px;">
       Minimal — username only:
     </p>
     <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username
 alice
-bob
-carol</pre>
-    <p class="text-muted" style="font-size:12px; margin: 14px 0 10px;">
-      With email:
-    </p>
-    <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username,email
-alice,alice@example.com
-bob,bob@example.com</pre>
+bob</pre>
     <p class="text-muted" style="font-size:12px; margin-top: 14px;">
-      The downloaded CSV will contain: <span class="mono">username, email, ssid, psk</span>
+      Downloaded credentials CSV: <span class="mono">username, email, vlan, ssid, psk</span>
     </p>
   </div>
 </div>

@@ -91,7 +91,6 @@ async def bulk_page(request: Request):
 @app.post("/bulk")
 async def bulk_create(
     ssid: str = Form(...),
-    vlan_id: str = Form(""),
     file: UploadFile = File(...),
 ):
     content = await file.read()
@@ -102,15 +101,16 @@ async def bulk_create(
     for row in reader:
         username = (row.get('username') or row.get('name') or '').strip()
         email    = (row.get('email') or '').strip()
+        vlan     = (row.get('vlan') or row.get('vlan_id') or '').strip()
         if not username:
             continue
         psk        = _generate_psk()
         account_id = db.create_account(username, email)
-        db.add_psk(account_id, psk, ssid, vlan_id.strip() or None)
-        rows.append({'username': username, 'email': email, 'ssid': ssid, 'psk': psk})
+        db.add_psk(account_id, psk, ssid, vlan or None)
+        rows.append({'username': username, 'email': email, 'vlan': vlan, 'ssid': ssid, 'psk': psk})
 
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=['username', 'email', 'ssid', 'psk'])
+    writer = csv.DictWriter(out, fieldnames=['username', 'email', 'vlan', 'ssid', 'psk'])
     writer.writeheader()
     writer.writerows(rows)
 
