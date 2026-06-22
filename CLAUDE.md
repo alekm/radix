@@ -18,8 +18,6 @@ The implementation lives in five files under `radix/`:
 | `schema.sql` | DB schema (`accounts`, `pairwise_master_keys`) |
 | `raddb/` | FreeRADIUS config snippets |
 
-Reference implementation: rXg codebase at `/mnt/backup/rxg` — especially `rxgd/bin/freeradius_hook` (core auth) and `rxgd/Rxg/ActiveRecord/PairwiseMasterKey.pm` (PMK calc).
-
 ## Vendor Detection & Attributes
 
 Vendor is detected by which radius attribute is present in the request:

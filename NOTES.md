@@ -7,17 +7,6 @@ A custom FreeRADIUS DPSK service targeting OpenWiFi, TP-Link Omada, and Ruckus A
 - **FreeRADIUS** with `rlm_python3` hook (in-process, no network hop)
 - **Python** for the hook script (~300 lines)
 - **PostgreSQL** for PSK/account storage (`psycopg2`)
-- Reference implementation: rXg codebase at `/mnt/backup/rxg`
-
-## Key Files in rXg (Reference)
-
-| File | Purpose |
-|------|---------|
-| `rxgd/bin/freeradius_hook` | Core auth logic, MIC verification, vendor handling |
-| `rxgd/Rxg/ActiveRecord/PairwiseMasterKey.pm` | PMK calculation (PBKDF2) |
-| `console/app/models/pairwise_master_key.rb` | Rails PMK model |
-| `rxgd/Rxg/App/Radiusd.pm` | radiusd.conf generation |
-
 ## Vendor Matrix
 
 | Vendor | Detection Attr | SSID | ANonce | EAPOL Frame | AP MAC |
