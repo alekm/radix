@@ -4,52 +4,56 @@
 
 {% block content %}
 
-<div class="card" style="max-width: 600px;">
+<div class="card" style="max-width: 640px;">
   <div class="card-header">
     <span class="card-title">Import CSV</span>
   </div>
   <div class="card-body">
     <form method="post" action="/bulk" enctype="multipart/form-data">
-      <div class="form-row" style="margin-bottom: 16px;">
+
+      <p class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:8px;">
+        Applies to all rows
+      </p>
+      <div class="form-row" style="margin-bottom:20px; padding-bottom:18px; border-bottom:1px solid var(--border);">
         <div class="form-group grow">
           <label for="ssid">SSID</label>
           <input type="text" id="ssid" name="ssid" placeholder="CorpWiFi" required>
         </div>
       </div>
-      <div class="form-group" style="margin-bottom: 20px;">
-        <label for="file">CSV File</label>
+
+      <p class="text-muted" style="font-size:11px; text-transform:uppercase; letter-spacing:.07em; margin-bottom:8px;">
+        Per-row in CSV
+      </p>
+      <div class="form-group" style="margin-bottom:20px;">
+        <label for="file">CSV File <span class="text-muted" style="font-weight:400;">(username, email, vlan)</span></label>
         <input type="file" id="file" name="file" accept=".csv,text/csv" required>
         <p class="text-muted" style="font-size:11px; margin-top:6px;">
-          Required: <span class="mono">username</span> &nbsp;·&nbsp;
-          Optional: <span class="mono">email</span>, <span class="mono">vlan</span><br>
-          PSKs are auto-generated per row. VLAN is per-account.
+          Each row gets its own auto-generated PSK and VLAN assignment.
+          VLAN defaults to 1 if omitted.
         </p>
       </div>
+
       <button type="submit" class="btn btn-primary">Import &amp; Download Credentials</button>
     </form>
   </div>
 </div>
 
-<div class="card" style="max-width: 600px; margin-top: 20px;">
+<div class="card" style="max-width: 640px; margin-top: 20px;">
   <div class="card-header">
     <span class="card-title">CSV Format</span>
   </div>
   <div class="card-body">
-    <p class="text-muted" style="font-size:12px; margin-bottom: 10px;">
-      With per-account VLAN segmentation:
-    </p>
+    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">With per-account VLAN:</p>
     <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username,email,vlan
 alice,alice@example.com,100
 bob,bob@example.com,200
 carol,carol@example.com,100</pre>
-    <p class="text-muted" style="font-size:12px; margin: 14px 0 10px;">
-      Minimal — username only:
-    </p>
+    <p class="text-muted" style="font-size:12px; margin:14px 0 10px;">Minimal (VLAN defaults to 1):</p>
     <pre class="mono" style="background:var(--surface2); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--text);">username
 alice
 bob</pre>
-    <p class="text-muted" style="font-size:12px; margin-top: 14px;">
-      Downloaded credentials CSV: <span class="mono">username, email, vlan, ssid, psk</span>
+    <p class="text-muted" style="font-size:12px; margin-top:14px;">
+      Downloaded file: <span class="mono">username, email, vlan, ssid, psk</span>
     </p>
   </div>
 </div>
