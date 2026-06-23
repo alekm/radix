@@ -18,14 +18,28 @@ def handle(attrs):
     if vendor is None:
         return _handle_mac_auth(attrs)
 
-    mac    = attrs.get('Calling-Station-Id', '').lower().replace('-', ':')
-    ssid   = _get_ssid(vendor, attrs)
-    ap_mac = _get_ap_mac(vendor, attrs)
-    eapol_hex  = _get_eapol(vendor, attrs)
-    anonce_hex = _get_anonce(vendor, attrs, eapol_hex)
+    mac = attrs.get('Calling-Station-Id', '').lower().replace('-', ':')
+
+    # Parse the vendor blob exactly once.
+    try:
+        ssid, ap_mac, eapol_hex, anonce_hex = _extract(vendor, attrs)
+    except Exception as exc:
+        _log_err(f"RADIX extract error ({vendor}): {exc}")
+        return {'reject': True}
 
     snonce_offset = 17 if vendor == 'tplink' else 34
 
+    # Any DB/crypto failure here is fail-closed: we cannot verify, so reject —
+    # but reset the pool so a dropped connection doesn't poison later requests.
+    try:
+        return _authenticate(vendor, mac, ssid, ap_mac, anonce_hex, eapol_hex, snonce_offset)
+    except Exception as exc:
+        _log_err(f"RADIX auth error ({vendor}) mac={mac}: {exc}")
+        db.reset_conn()
+        return {'reject': True}
+
+
+def _authenticate(vendor, mac, ssid, ap_mac, anonce_hex, eapol_hex, snonce_offset):
     # Tier 1: in-memory cache
     pmk, psk, vlan_id = _from_cache(mac, ssid)
     if pmk is not None:
@@ -57,6 +71,14 @@ def handle(attrs):
 
     db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
     return {'reject': True}
+
+
+def _log_err(msg):
+    try:
+        import radiusd
+        radiusd.radlog(radiusd.L_ERR, msg)
+    except Exception:
+        pass
 
 
 # -- MAC auth (no DPSK blob) --------------------------------------------------
@@ -142,43 +164,31 @@ def _tplink_parse(attrs):
 
 # -- attribute extraction -----------------------------------------------------
 
-def _get_ssid(vendor, attrs):
-    if vendor == 'openwifi':
-        return attrs['Called-Station-Id'].split(':')[-1]
-    if vendor == 'tplink':
-        _, _, ssid, _ = _tplink_parse(attrs)
-        return ssid
-    if vendor == 'ruckus':
-        return attrs['Ruckus-SSID']
+def _extract(vendor, attrs):
+    """Return (ssid, ap_mac, eapol_hex, anonce_hex) for the detected vendor.
 
-def _get_ap_mac(vendor, attrs):
+    Parses the vendor blob once per request (the TP-Link blob in particular is
+    a packed sub-TLV structure that we don't want to walk four times)."""
     if vendor == 'openwifi':
-        return attrs['Called-Station-Id'].split(':')[0].lower().replace('-', ':')
-    if vendor == 'tplink':
-        _, _, _, ap_mac = _tplink_parse(attrs)
-        return ap_mac
-    if vendor == 'ruckus':
-        return attrs['NAS-Identifier'].lower().replace('-', ':')
+        called = attrs['Called-Station-Id']
+        ssid   = called.split(':')[-1]
+        ap_mac = called.split(':')[0].lower().replace('-', ':')
+        return ssid, ap_mac, attrs['FreeRADIUS-802.1X-EAPoL-Key-Msg'], attrs['FreeRADIUS-802.1X-Anonce']
 
-def _get_eapol(vendor, attrs):
-    if vendor == 'openwifi':
-        return attrs['FreeRADIUS-802.1X-EAPoL-Key-Msg']
     if vendor == 'tplink':
-        eapol, _, _, _ = _tplink_parse(attrs)
-        return eapol.hex() if eapol else ''
-    if vendor == 'ruckus':
-        packed  = attrs['Attr-26.25053.153']
-        msg_len = int(packed[96:98], 16)
-        return packed[90:90 + (msg_len * 2) + 8]
+        eapol, anonce_hex, ssid, ap_mac = _tplink_parse(attrs)
+        return ssid, ap_mac, (eapol.hex() if eapol else ''), anonce_hex
 
-def _get_anonce(vendor, attrs, eapol_hex):
-    if vendor == 'openwifi':
-        return attrs['FreeRADIUS-802.1X-Anonce']
-    if vendor == 'tplink':
-        _, anonce_hex, _, _ = _tplink_parse(attrs)
-        return anonce_hex
     if vendor == 'ruckus':
-        return attrs['Attr-26.25053.153'][22:22 + 64]
+        packed     = attrs['Attr-26.25053.153']
+        msg_len    = int(packed[96:98], 16)
+        eapol_hex  = packed[90:90 + (msg_len * 2) + 8]
+        anonce_hex = packed[22:22 + 64]
+        ssid       = attrs['Ruckus-SSID']
+        ap_mac     = attrs['NAS-Identifier'].lower().replace('-', ':')
+        return ssid, ap_mac, eapol_hex, anonce_hex
+
+    raise ValueError(f"unknown vendor {vendor!r}")
 
 
 # -- MIC verification ---------------------------------------------------------

@@ -111,6 +111,44 @@ def test_tplink_parse_falls_back_to_sub4_for_bssid():
     assert ap_mac == '01:02:03:04:05:06'
 
 
+def test_extract_openwifi():
+    attrs = {
+        'Called-Station-Id': 'AA-BB-CC-DD-EE-FF:MySSID',
+        'FreeRADIUS-802.1X-EAPoL-Key-Msg': 'deadbeef',
+        'FreeRADIUS-802.1X-Anonce': 'cafe',
+    }
+    ssid, ap_mac, eapol_hex, anonce_hex = dpsk._extract('openwifi', attrs)
+    assert ssid == 'MySSID'
+    assert ap_mac == 'aa:bb:cc:dd:ee:ff'
+    assert eapol_hex == 'deadbeef'
+    assert anonce_hex == 'cafe'
+
+
+def test_extract_ruckus_slices_packed_attr():
+    anonce  = 'ab' * 32                       # 64 hex chars at offset 22
+    msg_len = 5
+    body    = 'cd' * (msg_len + 4)            # (msg_len*2 + 8) hex chars at offset 90
+    packed  = (
+        '00' * 11 +                           # offsets 0..21
+        anonce +                              # 22..85
+        '00' * 2 +                            # 86..89
+        body +                                # 90..
+        '00' * 50                             # padding past msg_len marker
+    )
+    # Patch the msg_len marker (offset 96, 2 hex chars) to match `body` length.
+    packed = packed[:96] + f'{msg_len:02x}' + packed[98:]
+    attrs = {
+        'Attr-26.25053.153': packed,
+        'Ruckus-SSID': 'CorpWiFi',
+        'NAS-Identifier': 'AA-BB-CC-00-11-22',
+    }
+    ssid, ap_mac, eapol_hex, anonce_hex = dpsk._extract('ruckus', attrs)
+    assert ssid == 'CorpWiFi'
+    assert ap_mac == 'aa:bb:cc:00:11:22'
+    assert anonce_hex == anonce
+    assert eapol_hex == packed[90:90 + (msg_len * 2) + 8]
+
+
 def test_build_reply_vlan_uses_enum_name_not_integer():
     # Regression: Tunnel-Medium-Type '6' is silently dropped by FreeRADIUS.
     reply = dpsk._build_reply('openwifi', pmk=b'', psk='secret', vlan_id=42)

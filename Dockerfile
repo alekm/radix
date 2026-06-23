@@ -1,7 +1,12 @@
-FROM ubuntu:24.04
+# Pinned by digest so the apt snapshot (and thus the psycopg2 / FreeRADIUS
+# versions below) is reproducible across rebuilds. Refresh with:
+#   docker pull ubuntu:24.04 && docker inspect --format '{{index .RepoDigests 0}}' ubuntu:24.04
+FROM ubuntu:24.04@sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Snapshot versions (informational): freeradius 3.2.5+dfsg-3~ubuntu24.04.3,
+# python3-psycopg2 2.9.9-1build1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     freeradius \
     freeradius-python3 \
