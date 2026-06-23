@@ -122,10 +122,11 @@ def _handle_mac_auth(attrs):
         db.log_auth(client_mac, ssid, 'tplink', 'accept', cache_hit=False)
         return {'reply': _build_tplink_reply(row['psk'], row['vlan_id'])}
 
-    # Unknown device: Accept with default VLAN so DPSK blob can deliver the PMK
-    radiusd.radlog(radiusd.L_INFO, f"RADIX mac-auth unknown {client_mac}, accepting with default VLAN")
+    # Unknown device: Accept with no VLAN override (AP uses the SSID's network)
+    # so the subsequent DPSK blob can deliver the PMK.
+    radiusd.radlog(radiusd.L_INFO, f"RADIX mac-auth unknown {client_mac}, accepting (no VLAN override)")
     db.log_auth(client_mac, ssid, 'tplink', 'accept', cache_hit=False)
-    return {'reply': _vlan_attrs(1)}
+    return {'reply': {}}
 
 
 # -- vendor detection ---------------------------------------------------------
@@ -241,8 +242,11 @@ def _vlan_attrs(vlan_id):
 
 
 def _build_tplink_reply(psk, vlan_id, pmk=None):
-    reply = _vlan_attrs(vlan_id or 1)
-    reply['Tunnel-Password'] = psk
+    # No VLAN set => emit no Tunnel-* attrs, so the AP uses the SSID's own
+    # network (untagged / local) instead of being forced onto a tagged VLAN.
+    reply = {'Tunnel-Password': psk}
+    if vlan_id:
+        reply.update(_vlan_attrs(vlan_id))
     if pmk is not None:
         reply['TPLink-EAPOL-Found-PMK'] = pmk
     return reply

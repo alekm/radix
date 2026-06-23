@@ -203,7 +203,7 @@ async def psk_add(
     ssid: str = Form(...),
     vlan_id: str = Form(""),
 ):
-    db.add_psk(account_id, psk, ssid, vlan_id.strip() or '1')
+    db.add_psk(account_id, psk, ssid, vlan_id.strip() or None)
     return RedirectResponse(f"/accounts/{account_id}", status_code=303)
 
 
@@ -238,7 +238,7 @@ async def bulk_create(
             continue
         psk        = _generate_psk()
         account_id = db.create_account(username, email)
-        db.add_psk(account_id, psk, ssid, vlan or '1')
+        db.add_psk(account_id, psk, ssid, vlan or None)
         rows.append({'username': username, 'email': email, 'vlan': vlan, 'ssid': ssid, 'psk': psk})
 
     out = io.StringIO()

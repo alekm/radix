@@ -157,6 +157,24 @@ def test_build_reply_vlan_uses_enum_name_not_integer():
     assert reply['Tunnel-Password'] == 'secret'
 
 
+def test_tplink_reply_no_vlan_omits_tunnel_attrs():
+    # Blank VLAN => no Tunnel-* attrs, so the AP keeps the client on the SSID's
+    # own (untagged/local) network instead of a forced tagged VLAN.
+    reply = dpsk._build_tplink_reply('secret', None, pmk=b'\x01' * 32)
+    assert reply['Tunnel-Password'] == 'secret'
+    assert reply['TPLink-EAPOL-Found-PMK'] == b'\x01' * 32
+    assert 'Tunnel-Type' not in reply
+    assert 'Tunnel-Private-Group-Id' not in reply
+    assert 'Tunnel-Medium-Type' not in reply
+
+
+def test_tplink_reply_with_vlan_includes_tunnel_attrs():
+    reply = dpsk._build_tplink_reply('secret', 30)
+    assert reply['Tunnel-Type'] == '13'
+    assert reply['Tunnel-Medium-Type'] == 'IEEE-802'
+    assert reply['Tunnel-Private-Group-Id'] == '30'
+
+
 def test_evict_pmk_removes_only_matching_entries():
     dpsk._cache.clear()
     dpsk._to_cache('aa:aa', 'Net1', 5, b'pmk', 'psk', 100)

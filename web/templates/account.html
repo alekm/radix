@@ -62,7 +62,7 @@
         </div>
         <div class="form-group" style="min-width: 90px;">
           <label for="vlan_id">VLAN ID</label>
-          <input type="text" id="vlan_id" name="vlan_id" placeholder="1">
+          <input type="text" id="vlan_id" name="vlan_id" placeholder="untagged">
         </div>
         <div class="form-group" style="justify-content: flex-end;">
           <button type="submit" class="btn btn-primary">Assign</button>
@@ -70,6 +70,7 @@
       </div>
       <p class="text-muted" style="font-size:11px; margin-top:8px;">
         PMK is pre-computed on save. MAC is learned automatically on first auth.
+        Leave VLAN blank for untagged (the SSID's local network); set a number to assign a tagged VLAN.
       </p>
     </form>
   </div>
@@ -102,7 +103,7 @@
           <td>
             <form method="post" action="/accounts/{{ account.id }}/psks/{{ p.id }}/vlan" class="inline-edit">
               <input type="number" name="vlan_id" value="{{ p.vlan_id or '' }}" min="1" max="4094"
-                     placeholder="—" style="width:62px;">
+                     placeholder="untag" style="width:62px;">
               <button type="submit" class="btn btn-outline btn-sm">Save</button>
             </form>
           </td>
