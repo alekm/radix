@@ -10,22 +10,19 @@ RADIUS and hands back the matching key material, plus an optional per-key VLAN.
 It runs in-process inside FreeRADIUS via `rlm_python3` (no extra network hop) and
 ships with a small web UI for managing accounts, keys, and viewing auth logs.
 
-```
-                       ┌────────────────────────────────────────────┐
-   Wi-Fi client        │                   RADIX stack               │
-       │               │                                            │
-   association         │   ┌──────────────┐      ┌──────────────┐   │
-       ▼               │   │  FreeRADIUS  │      │   Web UI     │   │
-   ┌─────────┐  RADIUS │   │  + rlm_py3   │      │  (FastAPI)   │   │
-   │   AP    │─────────┼──▶│  hook.py     │      │  main.py     │   │
-   └─────────┘  1812/u │   │  dpsk.py     │      └──────┬───────┘   │
-                       │   │  db.py       │             │           │
-                       │   └──────┬───────┘             │           │
-                       │          │   ┌─────────────────▼───────┐   │
-                       │          └──▶│      PostgreSQL          │   │
-                       │     LISTEN/  │  accounts / PSKs / log   │   │
-                       │     NOTIFY   └──────────────────────────┘   │
-                       └────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    client["Wi-Fi client"] -->|associate| ap["AP"]
+    subgraph stack ["RADIX stack"]
+        direction LR
+        fr["FreeRADIUS + rlm_python3<br/>hook · dpsk · acct · db"]
+        web["Web UI — FastAPI<br/>admin + dashboard"]
+        db[("PostgreSQL<br/>accounts · PSKs · sessions · logs")]
+        fr -->|psycopg2| db
+        web -->|psycopg2| db
+        web -.->|"revoke evict via NOTIFY"| fr
+    end
+    ap -->|"RADIUS auth + acct"| fr
 ```
 
 ## How it works
