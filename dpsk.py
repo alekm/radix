@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import os
+import threading
 import time
 import db
 
@@ -54,7 +55,7 @@ def _authenticate(vendor, mac, ssid, ap_mac, anonce_hex, eapol_hex, snonce_offse
     if row is not None:
         pmk = row['pmk_bytes']
         if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex, snonce_offset):
-            _to_cache(mac, ssid, pmk, row['psk'], row['vlan_id'])
+            _to_cache(mac, ssid, row['id'], pmk, row['psk'], row['vlan_id'])
             db.log_auth(mac, ssid, vendor, 'accept', cache_hit=False)
             return {'reply': _build_reply(vendor, pmk, row['psk'], row['vlan_id'])}
         db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
@@ -65,7 +66,7 @@ def _authenticate(vendor, mac, ssid, ap_mac, anonce_hex, eapol_hex, snonce_offse
         pmk = row['pmk_bytes']
         if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex, snonce_offset):
             db.bind_mac(row['id'], mac)
-            _to_cache(mac, ssid, pmk, row['psk'], row['vlan_id'])
+            _to_cache(mac, ssid, row['id'], pmk, row['psk'], row['vlan_id'])
             db.log_auth(mac, ssid, vendor, 'accept', cache_hit=False)
             return {'reply': _build_reply(vendor, pmk, row['psk'], row['vlan_id'])}
 
@@ -265,12 +266,63 @@ def _from_cache(mac, ssid):
     entry = _cache.get((mac, ssid))
     if entry is None:
         return None, None, None
-    pmk, psk, vlan_id, expires_at = entry
+    pmk_id, pmk, psk, vlan_id, expires_at = entry
     if time.time() > expires_at:
-        del _cache[(mac, ssid)]
+        _cache.pop((mac, ssid), None)
         return None, None, None
     return pmk, psk, vlan_id
 
 
-def _to_cache(mac, ssid, pmk, psk, vlan_id):
-    _cache[(mac, ssid)] = (pmk, psk, vlan_id, time.time() + _CACHE_TTL)
+def _to_cache(mac, ssid, pmk_id, pmk, psk, vlan_id):
+    _cache[(mac, ssid)] = (pmk_id, pmk, psk, vlan_id, time.time() + _CACHE_TTL)
+
+
+# -- revocation eviction ------------------------------------------------------
+
+def _evict_pmk(pmk_id):
+    """Drop every cache entry bound to a given PMK id. Returns count removed."""
+    keys = [k for k, v in list(_cache.items()) if v[0] == pmk_id]
+    for k in keys:
+        _cache.pop(k, None)
+    return len(keys)
+
+
+def _on_revoke(payload):
+    """Handle a NOTIFY payload from the web UI: a pmk id, or 'all'."""
+    if payload == 'all':
+        n = len(_cache)
+        _cache.clear()
+        _log_err(f"RADIX cache flushed ({n} entries) on revoke-all")
+        return
+    try:
+        pmk_id = int(payload)
+    except (TypeError, ValueError):
+        return
+    n = _evict_pmk(pmk_id)
+    if n:
+        _log_err(f"RADIX evicted {n} cache entries for revoked pmk {pmk_id}")
+
+
+_listener_started = False
+_listener_lock = threading.Lock()
+
+
+def start_revocation_listener():
+    """Spawn a daemon thread that evicts cached PMKs when the web UI revokes one.
+    Safe to call repeatedly; only the first call starts a thread. Degrades to
+    plain TTL expiry if the DB/listener is unavailable."""
+    global _listener_started
+    with _listener_lock:
+        if _listener_started:
+            return
+        _listener_started = True
+
+    def _run():
+        while True:
+            try:
+                db.listen_revocations(_on_revoke)
+            except Exception as exc:
+                _log_err(f"RADIX revocation listener down, retrying: {exc}")
+                time.sleep(5)
+
+    threading.Thread(target=_run, name='radix-revoke-listener', daemon=True).start()

@@ -1,17 +1,30 @@
 import base64
 import os
+import select
 import threading
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.extensions
 import psycopg2.extras
 import psycopg2.pool
+
+REVOKE_CHANNEL = 'radix_revoke'
 
 # FreeRADIUS runs rlm_python3 multi-threaded, and psycopg2 releases the GIL
 # during libpq I/O — so a single shared connection is unsafe. Each request
 # borrows its own connection from this pool for the duration of one operation.
 _pool = None
 _pool_lock = threading.Lock()
+
+
+def _conn_params():
+    return dict(
+        host=os.environ['DB_HOST'],
+        dbname=os.environ['DB_NAME'],
+        user=os.environ['DB_USER'],
+        password=os.environ['DB_PASSWORD'],
+    )
 
 
 def _get_pool():
@@ -22,10 +35,7 @@ def _get_pool():
                 _pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=1,
                     maxconn=int(os.environ.get('DB_POOL_MAX', 16)),
-                    host=os.environ['DB_HOST'],
-                    dbname=os.environ['DB_NAME'],
-                    user=os.environ['DB_USER'],
-                    password=os.environ['DB_PASSWORD'],
+                    **_conn_params(),
                 )
     return _pool
 
@@ -139,3 +149,28 @@ def log_auth(mac, ssid, vendor, result, cache_hit=False):
             """, (mac, ssid, vendor, result, cache_hit))
     except Exception:
         pass
+
+
+def listen_revocations(on_revoke, _timeout=60):
+    """Block on a dedicated connection, invoking on_revoke(payload) for each
+    NOTIFY on REVOKE_CHANNEL. Runs until the connection drops (caller retries)."""
+    conn = psycopg2.connect(**_conn_params())
+    try:
+        conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        with conn.cursor() as cur:
+            cur.execute(f"LISTEN {REVOKE_CHANNEL}")
+        while True:
+            if select.select([conn], [], [], _timeout) == ([], [], []):
+                continue  # timeout — loop so a dead socket eventually surfaces
+            conn.poll()
+            while conn.notifies:
+                note = conn.notifies.pop(0)
+                try:
+                    on_revoke(note.payload)
+                except Exception:
+                    pass
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

@@ -155,3 +155,40 @@ def test_build_reply_vlan_uses_enum_name_not_integer():
     assert reply['Tunnel-Medium-Type'] == 'IEEE-802'
     assert reply['Tunnel-Private-Group-Id'] == '42'
     assert reply['Tunnel-Password'] == 'secret'
+
+
+def test_evict_pmk_removes_only_matching_entries():
+    dpsk._cache.clear()
+    dpsk._to_cache('aa:aa', 'Net1', 5, b'pmk', 'psk', 100)
+    dpsk._to_cache('bb:bb', 'Net1', 5, b'pmk', 'psk', 100)
+    dpsk._to_cache('cc:cc', 'Net2', 6, b'pmk', 'psk', 100)
+
+    assert dpsk._evict_pmk(5) == 2
+    assert dpsk._from_cache('aa:aa', 'Net1') == (None, None, None)
+    assert dpsk._from_cache('bb:bb', 'Net1') == (None, None, None)
+    # A different PMK is untouched.
+    pmk, psk, vlan = dpsk._from_cache('cc:cc', 'Net2')
+    assert (pmk, psk, vlan) == (b'pmk', 'psk', 100)
+    dpsk._cache.clear()
+
+
+def test_on_revoke_all_flushes_cache():
+    dpsk._cache.clear()
+    dpsk._to_cache('aa:aa', 'Net1', 1, b'p', 'k', 1)
+    dpsk._on_revoke('all')
+    assert dpsk._cache == {}
+
+
+def test_on_revoke_evicts_by_id():
+    dpsk._cache.clear()
+    dpsk._to_cache('aa:aa', 'Net1', 7, b'p', 'k', 1)
+    dpsk._on_revoke('7')          # payload arrives as a string over NOTIFY
+    assert dpsk._from_cache('aa:aa', 'Net1') == (None, None, None)
+
+
+def test_on_revoke_ignores_bad_payload():
+    dpsk._cache.clear()
+    dpsk._to_cache('aa:aa', 'Net1', 1, b'p', 'k', 1)
+    dpsk._on_revoke('not-an-int')
+    assert len(dpsk._cache) == 1
+    dpsk._cache.clear()

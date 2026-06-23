@@ -5,6 +5,13 @@ import db
 
 _DEBUG = os.environ.get('RADIX_DEBUG', '').lower() in ('1', 'true', 'yes')
 
+# Evict cached PMKs as soon as the web UI revokes one (falls back to TTL expiry
+# if the listener can't connect).
+try:
+    dpsk.start_revocation_listener()
+except Exception as exc:
+    radiusd.radlog(radiusd.L_ERR, f"RADIX could not start revocation listener: {exc}")
+
 def authorize(p):
     attrs = dict(p)
     if _DEBUG:

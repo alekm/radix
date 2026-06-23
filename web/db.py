@@ -6,6 +6,8 @@ import psycopg2.extras
 
 _conn = None
 
+REVOKE_CHANNEL = 'radix_revoke'
+
 
 def _get_conn():
     global _conn
@@ -102,9 +104,12 @@ def create_account(username, email):
 
 
 def delete_account(account_id):
+    """Hard-delete the account (cascades to its PSKs and MAC bindings) and tell
+    the RADIUS process to flush its cache, since the removed PMK ids are gone."""
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute("DELETE FROM accounts WHERE id = %s", (account_id,))
+        cur.execute("SELECT pg_notify(%s, 'all')", (REVOKE_CHANNEL,))
     conn.commit()
 
 
@@ -126,13 +131,15 @@ def add_psk(account_id, psk, ssid, vlan_id=None):
 
 def revoke_psk(psk_id):
     """Soft-delete: stamp revoked_at so the PSK stops authenticating but its
-    history (auth_log, bound MACs) is preserved for audit."""
+    history (auth_log, bound MACs) is preserved for audit. Notifies the RADIUS
+    process to evict any cached copy of this PMK immediately."""
     conn = _get_conn()
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE pairwise_master_keys SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL",
             (psk_id,),
         )
+        cur.execute("SELECT pg_notify(%s, %s)", (REVOKE_CHANNEL, str(psk_id)))
     conn.commit()
 
 
