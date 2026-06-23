@@ -111,7 +111,7 @@ All configuration is via environment variables (see `.env.example`).
 | `RETENTION_INTERVAL_HOURS` | `24` | web | How often the retention sweep runs |
 | `ANALYTICS_INTERVAL_SECONDS` | `300` | web | How often dashboard analytics are sampled + recomputed |
 | `ANALYTICS_WINDOW_DAYS` | `7` | web | Time window the dashboard charts cover |
-| `SESSION_STALE_MINUTES` | `30` | web | A session counts as active only if updated within this window (set ≥ 2× the AP's interim interval) |
+| `SESSION_STALE_MINUTES` | `30` | web | A session counts as active only if updated within this window (set ≥ 2× the AP's interim interval; `0` disables, requires interim accounting to be enabled on the AP) |
 | `RADIX_TIER3_RATE` | `50` | radius | Global Tier-3 scans/sec (token-bucket refill) |
 | `RADIX_TIER3_BURST` | `100` | radius | Token-bucket capacity |
 | `RADIX_TIER3_MAX_FAILURES` | `10` | radius | Per-MAC failures before cooldown |

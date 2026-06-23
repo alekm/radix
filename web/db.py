@@ -13,8 +13,20 @@ REVOKE_CHANNEL = 'radix_revoke'
 
 # A session is "active" only if it's open AND has sent an interim update within
 # this window — so sessions whose Stop was lost (device gone, NAS reboot) age out
-# of the active count instead of lingering forever. Set >= 2x the AP's interim.
+# of the active count instead of lingering forever. Set >= 2x the AP's interim
+# interval. Set to 0 to disable (active = any open session) when the controller
+# doesn't send interim updates.
 _STALE_MINUTES = int(os.environ.get("SESSION_STALE_MINUTES", 30))
+
+
+def _active_expr(alias=""):
+    """SQL boolean for an 'active' session, plus its bind params. With the stale
+    window disabled (<= 0), 'active' is simply 'open' (no Stop received)."""
+    a = (alias + ".") if alias else ""
+    if _STALE_MINUTES > 0:
+        return (f"({a}stopped_at IS NULL AND {a}updated_at > now() - make_interval(mins => %s))",
+                [_STALE_MINUTES])
+    return f"({a}stopped_at IS NULL)", []
 
 
 def _conn_params():
@@ -87,15 +99,15 @@ ANALYTICS_WINDOW_DAYS = int(os.environ.get("ANALYTICS_WINDOW_DAYS", 7))
 def sample_metrics():
     """Append one rollup sample: active session count + cumulative bytes."""
     with _bg_cursor(commit=True) as cur:
-        cur.execute("""
+        expr, p = _active_expr()
+        cur.execute(f"""
             INSERT INTO metrics_rollup (active_sessions, total_in, total_out)
             SELECT
-                count(*) FILTER (WHERE stopped_at IS NULL
-                                 AND updated_at > now() - make_interval(mins => %s)),
+                count(*) FILTER (WHERE {expr}),
                 COALESCE(SUM(in_octets), 0),
                 COALESCE(SUM(out_octets), 0)
             FROM acct_sessions
-        """, (_STALE_MINUTES,))
+        """, p)
 
 
 def compute_analytics():
@@ -212,11 +224,8 @@ def get_stats():
         auths = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM auth_log WHERE result = 'reject' AND created_at > now() - interval '24h'")
         rejects = cur.fetchone()[0]
-        cur.execute(
-            "SELECT COUNT(*) FROM acct_sessions "
-            "WHERE stopped_at IS NULL AND updated_at > now() - make_interval(mins => %s)",
-            (_STALE_MINUTES,),
-        )
+        expr, p = _active_expr()
+        cur.execute(f"SELECT COUNT(*) FROM acct_sessions WHERE {expr}", p)
         active = cur.fetchone()[0]
     return {'accounts': accounts, 'psks': psks, 'auths_24h': auths,
             'rejects_24h': rejects, 'active_sessions': active}
@@ -437,13 +446,13 @@ def verify_api_client(client_key, secret):
 # -- accounting sessions ------------------------------------------------------
 
 def get_sessions(limit=200, active_only=False):
+    expr, p = _active_expr("s")
     where = "WHERE is_active" if active_only else ""
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
             SELECT * FROM (
                 SELECT s.*, a.id AS account_id, a.username AS account_username,
-                       (s.stopped_at IS NULL
-                        AND s.updated_at > now() - make_interval(mins => %s)) AS is_active
+                       {expr} AS is_active
                 FROM acct_sessions s
                 LEFT JOIN LATERAL (
                     SELECT acc.id, acc.username
@@ -458,17 +467,16 @@ def get_sessions(limit=200, active_only=False):
             {where}
             ORDER BY is_active DESC, updated_at DESC
             LIMIT %s
-        """, (_STALE_MINUTES, limit))
+        """, p + [limit])
         return cur.fetchall()
 
 
 def get_account_sessions(account_id, limit=50):
     """Sessions for an account, resolved through its PSKs' learned MAC bindings."""
+    expr, p = _active_expr("s")
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("""
-            SELECT s.*,
-                   (s.stopped_at IS NULL
-                    AND s.updated_at > now() - make_interval(mins => %s)) AS is_active
+        cur.execute(f"""
+            SELECT s.*, {expr} AS is_active
             FROM acct_sessions s
             JOIN mac_bindings mb           ON mb.mac = s.mac
             JOIN pairwise_master_keys pmk  ON pmk.id = mb.pmk_id
@@ -476,7 +484,7 @@ def get_account_sessions(account_id, limit=50):
             GROUP BY s.id
             ORDER BY is_active DESC, s.updated_at DESC
             LIMIT %s
-        """, (_STALE_MINUTES, account_id, limit))
+        """, p + [account_id, limit])
         return cur.fetchall()
 
 
