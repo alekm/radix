@@ -64,6 +64,7 @@ a key is created and stored base64-encoded, so the auth path never runs PBKDF2.
 | `docker-compose.yml` | The full stack: `radius`, `web`, `postgres` |
 | `deploy.sh` | Syncs the source to the deploy dir, rebuilds, and applies migrations |
 | `tests/` | `pytest` unit tests for the crypto / parsing / rate-limit logic |
+| `mcp/` | Standalone MCP server (stdio) exposing RADIX management as AI-assistant tools via the JSON API (see `mcp/README.md`) |
 
 ## Quick start
 
