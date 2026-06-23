@@ -225,3 +225,7 @@ manually against a throwaway `postgres:16` container (see commit history).
   matches exactly (the PMK is salted with the SSID), and that the VLAN exists.
 - **Revoked device still connecting:** the Tier-1 cache or a missed `NOTIFY`;
   restart the `radius` container to flush the cache.
+
+## License
+
+[MIT](LICENSE) © 2026 Alek M
