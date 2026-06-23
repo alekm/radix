@@ -23,7 +23,10 @@ def _get_conn():
     global _conn
     if _conn is None or _conn.closed:
         _conn = psycopg2.connect(**_conn_params())
-        _conn.autocommit = False
+        # Autocommit so a failed statement can't leave the shared connection in
+        # an aborted-transaction state that wedges every later request. Each
+        # write here is a single statement, so per-statement commit is fine.
+        _conn.autocommit = True
     return _conn
 
 
@@ -326,11 +329,12 @@ def get_account_sessions(account_id, limit=50):
     """Sessions for an account, resolved through its PSKs' learned MAC bindings."""
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
-            SELECT DISTINCT s.*
+            SELECT s.*
             FROM acct_sessions s
             JOIN mac_bindings mb           ON mb.mac = s.mac
             JOIN pairwise_master_keys pmk  ON pmk.id = mb.pmk_id
             WHERE pmk.account_id = %s
+            GROUP BY s.id
             ORDER BY (s.stopped_at IS NULL) DESC, s.updated_at DESC
             LIMIT %s
         """, (account_id, limit))
