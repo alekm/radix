@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="RADIX">
+  <!-- Simplified for tiny sizes: bold R + two short root feet -->
+  <g stroke="#6e7bff" stroke-width="7.2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M21 11 V44"/>
+    <path d="M21 11 H35 C42 11 46 14 46 21 C46 28 42 31 35 31 H21"/>
+    <path d="M28 31 L41 44"/>
+  </g>
+  <g stroke="#6e7bff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M21 44 V48 L15 54"/>
+    <path d="M41 44 V48 L47 54"/>
+  </g>
+  <g fill="#6e7bff">
+    <circle cx="15" cy="54" r="4"/>
+    <circle cx="47" cy="54" r="4"/>
+  </g>
+</svg>

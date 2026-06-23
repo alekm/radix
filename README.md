@@ -1,4 +1,6 @@
-# RADIX
+<p align="center">
+  <img src="web/static/icons/og-banner.png" alt="RADIX" width="640">
+</p>
 
 RADIX is a **FreeRADIUS DPSK (Dynamic Pre-Shared Key) authentication backend** for
 enterprise Wi-Fi. Each user (or device) gets their own pre-shared key on a single

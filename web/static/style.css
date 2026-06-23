@@ -41,9 +41,14 @@ body {
 }
 
 .sidebar-brand {
-  padding: 22px 18px 18px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 20px 18px 18px;
   border-bottom: 1px solid var(--border);
 }
+
+.brand-mark { flex: 0 0 auto; display: block; }
 
 .brand-name {
   font-size: 15px;

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="RADIX">
+  <!-- R: bold letterform -->
+  <g stroke="#6e7bff" stroke-width="6.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M21 10 V43"/>
+    <path d="M21 10 H35 C42 10 46 13 46 20 C46 27 42 30 35 30 H21"/>
+    <path d="M28 30 L41 43"/>
+  </g>
+  <!-- circuit roots: finer traces growing from stem + leg -->
+  <g stroke="#6e7bff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M21 43 V47 L13 54"/>
+    <path d="M21 43 V50 L25 55"/>
+    <path d="M41 43 V50 L39 55"/>
+    <path d="M41 43 V47 L51 54"/>
+  </g>
+  <g fill="#6e7bff">
+    <circle cx="13" cy="54" r="3.1"/>
+    <circle cx="25" cy="55" r="3.1"/>
+    <circle cx="39" cy="55" r="3.1"/>
+    <circle cx="51" cy="54" r="3.1"/>
+  </g>
+</svg>
