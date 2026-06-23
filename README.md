@@ -50,9 +50,10 @@ a key is created and stored base64-encoded, so the auth path never runs PBKDF2.
 
 | Path | Role |
 |------|------|
-| `hook.py` | FreeRADIUS `rlm_python3` entry points (`authorize`, `post_auth`); starts the revocation listener |
+| `hook.py` | FreeRADIUS `rlm_python3` entry points (`authorize`, `post_auth`, `accounting`); starts the revocation listener |
 | `dpsk.py` | Vendor detection, EAPOL parsing, MIC verification, PTK derivation, cache, Tier-3 rate limiter |
-| `db.py` | Auth-path DB access (pooled), `LISTEN` revocation channel |
+| `acct.py` | RADIUS accounting: parses Start/Interim/Stop and upserts session rows |
+| `db.py` | Auth-path DB access (pooled), `LISTEN` revocation channel, accounting upsert |
 | `migrations/` | Ordered, idempotent SQL migrations |
 | `raddb/` | FreeRADIUS config overlays (`clients.conf`, site, `python3` module, vendor dictionary) |
 | `web/` | FastAPI admin UI (`main.py`, `db.py`, templates, static) |
@@ -164,6 +165,24 @@ waiting for the Tier-1 cache to expire), the web process emits a PostgreSQL
 evicts the cached PMK. If the listener is unavailable, revocation still takes
 effect within `PMK_CACHE_TTL`.
 
+### RADIUS accounting
+
+If the AP/controller is configured to send accounting to UDP `1813`, RADIX
+records one row per session (`Acct-Session-Id`), upserted across Start /
+Interim-Update / Stop: client MAC, username, SSID, framed IP, bytes in/out,
+session duration, and terminate cause. Octet counters combine the 32-bit value
+with its Gigawords high word, and use `GREATEST` so out-of-order interim packets
+can't roll a counter backward.
+
+- **Sessions** page — active and recent sessions, with a filter for active only.
+- **Account detail** — that account's sessions (resolved via learned MAC
+  bindings) plus total bytes up/down.
+- **Dashboard** — an active-session count.
+
+Accounting is observability only; authentication works without it. Enable it on
+the AP side (e.g. Omada's RADIUS profile) and set a sane interim interval, since
+interim updates add database writes.
+
 ### Tier-3 rate limiting
 
 The Tier-3 scan is O(number of PSKs on the SSID), so spoofed MACs with junk MICs
@@ -185,6 +204,9 @@ accounts(id, username, email, created_at)
 pairwise_master_keys(id, account_id, psk, ssid, pmk_b64, vlan_id, revoked_at, created_at)
 mac_bindings(id, pmk_id, mac, created_at)        -- learned on first auth
 auth_log(id, mac, ssid, vendor, result, cache_hit, created_at)
+acct_sessions(id, session_id, mac, username, ssid, nas_ip, framed_ip,
+              in_octets, out_octets, session_time, status, terminate_cause,
+              started_at, updated_at, stopped_at)
 ```
 
 Migrations live in `migrations/`, named `NNN_*.sql`, and are **idempotent**

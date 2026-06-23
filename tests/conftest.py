@@ -16,6 +16,7 @@ if 'db' not in sys.modules:
     db_stub.lookup_all_pmks     = lambda *a, **k: []
     db_stub.bind_mac            = lambda *a, **k: None
     db_stub.reset_conn          = lambda *a, **k: None
+    db_stub.upsert_acct_session = lambda *a, **k: None
     sys.modules['db'] = db_stub
 
 if 'radiusd' not in sys.modules:

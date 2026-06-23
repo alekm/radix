@@ -39,6 +39,23 @@ app = FastAPI(dependencies=[Depends(require_admin)])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
+def _duration(seconds):
+    try:
+        seconds = int(seconds or 0)
+    except (TypeError, ValueError):
+        return "—"
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+templates.env.filters["duration"] = _duration
+
 _PSK_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
 
 def _generate_psk(length=20):
@@ -82,6 +99,7 @@ async def account_detail(request: Request, account_id: int):
         "request": request,
         "account": account,
         "psks": psks,
+        "sessions": db.get_account_sessions(account_id),
     })
 
 
@@ -146,6 +164,18 @@ async def bulk_create(
         media_type='text/csv',
         headers={'Content-Disposition': f'attachment; filename="radix-{ssid}.csv"'},
     )
+
+
+# -- sessions -----------------------------------------------------------------
+
+@app.get("/sessions", response_class=HTMLResponse)
+async def sessions(request: Request, active: Optional[str] = None):
+    active_only = active in ("1", "true", "on")
+    return templates.TemplateResponse("sessions.html", {
+        "request": request,
+        "sessions": db.get_sessions(active_only=active_only),
+        "active_only": active_only,
+    })
 
 
 # -- settings -----------------------------------------------------------------

@@ -39,7 +39,10 @@ def get_stats():
         auths = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM auth_log WHERE result = 'reject' AND created_at > now() - interval '24h'")
         rejects = cur.fetchone()[0]
-    return {'accounts': accounts, 'psks': psks, 'auths_24h': auths, 'rejects_24h': rejects}
+        cur.execute("SELECT COUNT(*) FROM acct_sessions WHERE stopped_at IS NULL")
+        active = cur.fetchone()[0]
+    return {'accounts': accounts, 'psks': psks, 'auths_24h': auths,
+            'rejects_24h': rejects, 'active_sessions': active}
 
 
 def get_recent_logs(n=10):
@@ -141,6 +144,35 @@ def revoke_psk(psk_id):
         )
         cur.execute("SELECT pg_notify(%s, %s)", (REVOKE_CHANNEL, str(psk_id)))
     conn.commit()
+
+
+# -- accounting sessions ------------------------------------------------------
+
+def get_sessions(limit=200, active_only=False):
+    where = "WHERE stopped_at IS NULL" if active_only else ""
+    with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"""
+            SELECT * FROM acct_sessions
+            {where}
+            ORDER BY (stopped_at IS NULL) DESC, updated_at DESC
+            LIMIT %s
+        """, (limit,))
+        return cur.fetchall()
+
+
+def get_account_sessions(account_id, limit=50):
+    """Sessions for an account, resolved through its PSKs' learned MAC bindings."""
+    with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT DISTINCT s.*
+            FROM acct_sessions s
+            JOIN mac_bindings mb           ON mb.mac = s.mac
+            JOIN pairwise_master_keys pmk  ON pmk.id = mb.pmk_id
+            WHERE pmk.account_id = %s
+            ORDER BY (s.stopped_at IS NULL) DESC, s.updated_at DESC
+            LIMIT %s
+        """, (account_id, limit))
+        return cur.fetchall()
 
 
 # -- logs ---------------------------------------------------------------------

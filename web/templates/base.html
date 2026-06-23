@@ -32,6 +32,11 @@
         </a>
       </li>
       <li>
+        <a href="/sessions" class="{{ 'active' if '/sessions' in request.url.path else '' }}">
+          <span class="nav-icon">◔</span> Sessions
+        </a>
+      </li>
+      <li>
         <a href="/logs" class="{{ 'active' if '/logs' in request.url.path else '' }}">
           <span class="nav-icon">◎</span> Auth Log
         </a>

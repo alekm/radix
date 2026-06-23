@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Python hook files live alongside the built-in example.py / radiusd.py
-COPY hook.py dpsk.py db.py /etc/freeradius/3.0/mods-config/python3/
+COPY hook.py dpsk.py db.py acct.py /etc/freeradius/3.0/mods-config/python3/
 
 # FreeRADIUS config overlays
 COPY raddb/clients.conf           /etc/freeradius/3.0/clients.conf

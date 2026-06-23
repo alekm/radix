@@ -8,4 +8,7 @@ python3 {
 
     mod_post_auth = hook
     func_post_auth = post_auth
+
+    mod_accounting = hook
+    func_accounting = accounting
 }

@@ -2,6 +2,7 @@ import os
 import radiusd
 import dpsk
 import db
+import acct
 
 _DEBUG = os.environ.get('RADIX_DEBUG', '').lower() in ('1', 'true', 'yes')
 
@@ -27,3 +28,12 @@ def authorize(p):
 
 def post_auth(p):
     return radiusd.RLM_MODULE_NOOP
+
+def accounting(p):
+    attrs = dict(p)
+    try:
+        acct.handle(attrs)
+    except Exception as exc:
+        radiusd.radlog(radiusd.L_ERR, f"RADIX accounting error: {exc}")
+    # Always ACK so the NAS doesn't retransmit endlessly.
+    return radiusd.RLM_MODULE_OK

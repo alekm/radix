@@ -151,6 +151,40 @@ def log_auth(mac, ssid, vendor, result, cache_hit=False):
         pass
 
 
+def upsert_acct_session(rec):
+    """Insert or update one accounting session keyed by Acct-Session-Id.
+
+    Counters use GREATEST so out-of-order interim packets can't roll values
+    backward; started_at is set once (on insert) and preserved thereafter."""
+    rec = dict(rec)
+    rec['is_stop'] = (rec.get('status') == 'stop')
+    sql = """
+        INSERT INTO acct_sessions
+            (session_id, mac, username, ssid, nas_ip, framed_ip,
+             in_octets, out_octets, session_time, status, terminate_cause,
+             started_at, updated_at, stopped_at)
+        VALUES
+            (%(session_id)s, %(mac)s, %(username)s, %(ssid)s, %(nas_ip)s, %(framed_ip)s,
+             %(in_octets)s, %(out_octets)s, %(session_time)s, %(status)s, %(terminate_cause)s,
+             now(), now(), CASE WHEN %(is_stop)s THEN now() ELSE NULL END)
+        ON CONFLICT (session_id) DO UPDATE SET
+            mac             = COALESCE(EXCLUDED.mac, acct_sessions.mac),
+            username        = COALESCE(EXCLUDED.username, acct_sessions.username),
+            ssid            = COALESCE(EXCLUDED.ssid, acct_sessions.ssid),
+            nas_ip          = COALESCE(EXCLUDED.nas_ip, acct_sessions.nas_ip),
+            framed_ip       = COALESCE(EXCLUDED.framed_ip, acct_sessions.framed_ip),
+            in_octets       = GREATEST(acct_sessions.in_octets, EXCLUDED.in_octets),
+            out_octets      = GREATEST(acct_sessions.out_octets, EXCLUDED.out_octets),
+            session_time    = GREATEST(acct_sessions.session_time, EXCLUDED.session_time),
+            status          = EXCLUDED.status,
+            terminate_cause = COALESCE(EXCLUDED.terminate_cause, acct_sessions.terminate_cause),
+            updated_at      = now(),
+            stopped_at      = COALESCE(EXCLUDED.stopped_at, acct_sessions.stopped_at)
+    """
+    with _cursor(commit=True) as cur:
+        cur.execute(sql, rec)
+
+
 def listen_revocations(on_revoke, _timeout=60):
     """Block on a dedicated connection, invoking on_revoke(payload) for each
     NOTIFY on REVOKE_CHANNEL. Runs until the connection drops (caller retries)."""
