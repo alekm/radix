@@ -359,12 +359,22 @@ def update_account(account_id, username, email):
 # -- accounting sessions ------------------------------------------------------
 
 def get_sessions(limit=200, active_only=False):
-    where = "WHERE stopped_at IS NULL" if active_only else ""
+    where = "WHERE s.stopped_at IS NULL" if active_only else ""
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
-            SELECT * FROM acct_sessions
+            SELECT s.*, a.id AS account_id, a.username AS account_username
+            FROM acct_sessions s
+            LEFT JOIN LATERAL (
+                SELECT acc.id, acc.username
+                FROM mac_bindings mb
+                JOIN pairwise_master_keys pmk ON pmk.id = mb.pmk_id
+                JOIN accounts acc           ON acc.id = pmk.account_id
+                WHERE mb.mac = s.mac
+                ORDER BY pmk.id DESC
+                LIMIT 1
+            ) a ON true
             {where}
-            ORDER BY (stopped_at IS NULL) DESC, updated_at DESC
+            ORDER BY (s.stopped_at IS NULL) DESC, s.updated_at DESC
             LIMIT %s
         """, (limit,))
         return cur.fetchall()

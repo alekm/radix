@@ -22,7 +22,7 @@
       <thead>
         <tr>
           <th>State</th>
-          <th>User</th>
+          <th>Account</th>
           <th>MAC</th>
           <th>IP</th>
           <th>SSID</th>
@@ -42,7 +42,13 @@
             <span class="badge badge-accept">active</span>
             {% endif %}
           </td>
-          <td>{{ s.username or '—' }}</td>
+          <td>
+            {% if s.account_id %}
+            <a href="/accounts/{{ s.account_id }}">{{ s.account_username }}</a>
+            {% else %}
+            <span class="text-muted">{{ s.username or '—' }}</span>
+            {% endif %}
+          </td>
           <td class="mono">{{ s.mac or '—' }}</td>
           <td class="mono">{{ s.framed_ip or '—' }}</td>
           <td>{{ s.ssid or '—' }}</td>
