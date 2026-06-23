@@ -180,8 +180,10 @@
           <td>
             {% if s.stopped_at %}
             <span class="badge badge-miss">closed</span>
-            {% else %}
+            {% elif s.is_active %}
             <span class="badge badge-accept">active</span>
+            {% else %}
+            <span class="badge badge-noop">stale</span>
             {% endif %}
           </td>
           <td class="mono">{{ s.mac or '—' }}</td>

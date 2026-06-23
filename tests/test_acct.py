@@ -68,5 +68,17 @@ def test_parse_handles_missing_optional_fields():
     assert rec['session_time'] == 0
 
 
-def test_handle_returns_false_for_non_session_event():
-    assert acct.handle({'Acct-Status-Type': '7', 'Acct-Session-Id': 'x'}) is False
+def test_handle_returns_false_for_unknown_status():
+    # A status that's neither a session event nor a NAS lifecycle event.
+    assert acct.handle({'Acct-Status-Type': '4', 'Acct-Session-Id': 'x'}) is False
+
+
+def test_handle_accounting_on_closes_nas_sessions(monkeypatch):
+    import db
+    calls = []
+    monkeypatch.setattr(db, "close_nas_sessions", lambda ip: calls.append(ip))
+    assert acct.handle({'Acct-Status-Type': '7', 'NAS-IP-Address': '10.0.0.1'}) is True
+    assert calls == ['10.0.0.1']
+    # 'Accounting-Off' by name too
+    assert acct.handle({'Acct-Status-Type': 'Accounting-Off', 'NAS-IP-Address': '10.0.0.2'}) is True
+    assert calls == ['10.0.0.1', '10.0.0.2']

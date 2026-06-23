@@ -185,6 +185,19 @@ def upsert_acct_session(rec):
         cur.execute(sql, rec)
 
 
+def close_nas_sessions(nas_ip):
+    """Close all still-open sessions for a NAS — used on Accounting-On/Off, which
+    a controller emits on reboot/shutdown (the per-session Stops are lost)."""
+    if not nas_ip:
+        return
+    with _cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE acct_sessions
+            SET stopped_at = now(), status = 'stop', terminate_cause = 'NAS-Reboot'
+            WHERE nas_ip = %s AND stopped_at IS NULL
+        """, (nas_ip,))
+
+
 def listen_revocations(on_revoke, _timeout=60):
     """Block on a dedicated connection, invoking on_revoke(payload) for each
     NOTIFY on REVOKE_CHANNEL. Runs until the connection drops (caller retries)."""

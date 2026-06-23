@@ -33,6 +33,7 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      SESSION_STALE_MINUTES: ${SESSION_STALE_MINUTES:-30}
       TZ: ${TZ:-America/Kentucky/Louisville}
       PGTZ: ${TZ:-America/Kentucky/Louisville}
     depends_on:

@@ -58,9 +58,22 @@ def parse(attrs):
     }
 
 
+_LIFECYCLE = {'7', 'Accounting-On', '8', 'Accounting-Off'}
+
+
 def handle(attrs):
-    """Persist one accounting event. Returns True if recorded, False otherwise.
+    """Persist one accounting event. Returns True if handled, False otherwise.
     Never raises into the RADIUS path."""
+    # Accounting-On/Off signal a NAS reboot/shutdown — close its open sessions.
+    if str(attrs.get('Acct-Status-Type', '')) in _LIFECYCLE:
+        try:
+            db.close_nas_sessions(attrs.get('NAS-IP-Address'))
+            return True
+        except Exception as exc:
+            _acct_err(f"RADIX accounting lifecycle error: {exc}")
+            db.reset_conn()
+            return False
+
     record = parse(attrs)
     if record is None:
         return False
@@ -68,10 +81,14 @@ def handle(attrs):
         db.upsert_acct_session(record)
         return True
     except Exception as exc:
-        try:
-            import radiusd
-            radiusd.radlog(radiusd.L_ERR, f"RADIX accounting db error: {exc}")
-        except Exception:
-            pass
+        _acct_err(f"RADIX accounting db error: {exc}")
         db.reset_conn()
         return False
+
+
+def _acct_err(msg):
+    try:
+        import radiusd
+        radiusd.radlog(radiusd.L_ERR, msg)
+    except Exception:
+        pass

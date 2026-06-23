@@ -11,6 +11,11 @@ _conn = None
 
 REVOKE_CHANNEL = 'radix_revoke'
 
+# A session is "active" only if it's open AND has sent an interim update within
+# this window — so sessions whose Stop was lost (device gone, NAS reboot) age out
+# of the active count instead of lingering forever. Set >= 2x the AP's interim.
+_STALE_MINUTES = int(os.environ.get("SESSION_STALE_MINUTES", 30))
+
 
 def _conn_params():
     return dict(
@@ -85,11 +90,12 @@ def sample_metrics():
         cur.execute("""
             INSERT INTO metrics_rollup (active_sessions, total_in, total_out)
             SELECT
-                count(*) FILTER (WHERE stopped_at IS NULL),
+                count(*) FILTER (WHERE stopped_at IS NULL
+                                 AND updated_at > now() - make_interval(mins => %s)),
                 COALESCE(SUM(in_octets), 0),
                 COALESCE(SUM(out_octets), 0)
             FROM acct_sessions
-        """)
+        """, (_STALE_MINUTES,))
 
 
 def compute_analytics():
@@ -206,7 +212,11 @@ def get_stats():
         auths = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM auth_log WHERE result = 'reject' AND created_at > now() - interval '24h'")
         rejects = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM acct_sessions WHERE stopped_at IS NULL")
+        cur.execute(
+            "SELECT COUNT(*) FROM acct_sessions "
+            "WHERE stopped_at IS NULL AND updated_at > now() - make_interval(mins => %s)",
+            (_STALE_MINUTES,),
+        )
         active = cur.fetchone()[0]
     return {'accounts': accounts, 'psks': psks, 'auths_24h': auths,
             'rejects_24h': rejects, 'active_sessions': active}
@@ -427,24 +437,28 @@ def verify_api_client(client_key, secret):
 # -- accounting sessions ------------------------------------------------------
 
 def get_sessions(limit=200, active_only=False):
-    where = "WHERE s.stopped_at IS NULL" if active_only else ""
+    where = "WHERE is_active" if active_only else ""
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(f"""
-            SELECT s.*, a.id AS account_id, a.username AS account_username
-            FROM acct_sessions s
-            LEFT JOIN LATERAL (
-                SELECT acc.id, acc.username
-                FROM mac_bindings mb
-                JOIN pairwise_master_keys pmk ON pmk.id = mb.pmk_id
-                JOIN accounts acc           ON acc.id = pmk.account_id
-                WHERE mb.mac = s.mac
-                ORDER BY pmk.id DESC
-                LIMIT 1
-            ) a ON true
+            SELECT * FROM (
+                SELECT s.*, a.id AS account_id, a.username AS account_username,
+                       (s.stopped_at IS NULL
+                        AND s.updated_at > now() - make_interval(mins => %s)) AS is_active
+                FROM acct_sessions s
+                LEFT JOIN LATERAL (
+                    SELECT acc.id, acc.username
+                    FROM mac_bindings mb
+                    JOIN pairwise_master_keys pmk ON pmk.id = mb.pmk_id
+                    JOIN accounts acc           ON acc.id = pmk.account_id
+                    WHERE mb.mac = s.mac
+                    ORDER BY pmk.id DESC
+                    LIMIT 1
+                ) a ON true
+            ) t
             {where}
-            ORDER BY (s.stopped_at IS NULL) DESC, s.updated_at DESC
+            ORDER BY is_active DESC, updated_at DESC
             LIMIT %s
-        """, (limit,))
+        """, (_STALE_MINUTES, limit))
         return cur.fetchall()
 
 
@@ -452,15 +466,17 @@ def get_account_sessions(account_id, limit=50):
     """Sessions for an account, resolved through its PSKs' learned MAC bindings."""
     with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
-            SELECT s.*
+            SELECT s.*,
+                   (s.stopped_at IS NULL
+                    AND s.updated_at > now() - make_interval(mins => %s)) AS is_active
             FROM acct_sessions s
             JOIN mac_bindings mb           ON mb.mac = s.mac
             JOIN pairwise_master_keys pmk  ON pmk.id = mb.pmk_id
             WHERE pmk.account_id = %s
             GROUP BY s.id
-            ORDER BY (s.stopped_at IS NULL) DESC, s.updated_at DESC
+            ORDER BY is_active DESC, s.updated_at DESC
             LIMIT %s
-        """, (account_id, limit))
+        """, (_STALE_MINUTES, account_id, limit))
         return cur.fetchall()
 
 
