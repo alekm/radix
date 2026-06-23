@@ -225,9 +225,56 @@ could force repeated full scans. Two in-memory limiters guard it:
 
 Throttled requests reject silently (no DB write) to avoid log amplification.
 
-## Database & migrations
+## API access
 
-Tables: `accounts`, `pairwise_master_keys`, `mac_bindings`, `auth_log`.
+Beyond the web UI, RADIX exposes a JSON API for automation and the MCP server.
+
+**Credentials.** Generate an API client under **Settings → API Clients** — you get
+a key (`rdx_…`) and a secret shown **once** (only a SHA-256 of the secret is
+stored). Revoke a client anytime from the same page.
+
+**Auth.** Every route accepts admin HTTP Basic *or* an API client. For the API,
+send the client credential as a bearer token (HTTP Basic with key as username /
+secret as password also works):
+
+```
+Authorization: Bearer <key>:<secret>
+```
+
+An API client currently has full management access — treat the secret like a password.
+
+**Endpoints** (JSON in/out, under `/api`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/whoami` | verify credentials |
+| GET | `/api/stats` | dashboard counts |
+| GET | `/api/accounts` | list accounts |
+| POST | `/api/accounts` | create account |
+| GET | `/api/accounts/{id}` | account + its PSKs |
+| PATCH | `/api/accounts/{id}` | rename / change email |
+| DELETE | `/api/accounts/{id}` | delete (cascades) |
+| POST | `/api/accounts/{id}/psks` | add PSK (auto-generates if `psk` omitted) |
+| POST | `/api/psks/{id}/rekey` | re-key (auto-generates if `psk` omitted) |
+| PATCH | `/api/psks/{id}/vlan` | set VLAN (`null` = untagged) |
+| DELETE | `/api/psks/{id}` | revoke (soft-delete) |
+| GET | `/api/sessions` | sessions (`?active=true`) |
+| GET | `/api/logs` | auth log (`?mac=&ssid=&result=`) |
+| GET | `/api/analytics` | dashboard analytics JSON |
+
+```bash
+curl -H "Authorization: Bearer rdx_xxx:secret" \
+     -H "Content-Type: application/json" \
+     -d '{"ssid":"CorpWiFi","vlan_id":20}' \
+     http://host:8050/api/accounts/1/psks
+```
+
+**MCP server.** `mcp/` is a standalone [Model Context Protocol](https://modelcontextprotocol.io)
+server (stdio) that wraps these endpoints as tools for AI assistants (Claude
+Desktop/Code). It holds an API client credential and needs no database access.
+See [`mcp/README.md`](mcp/README.md).
+
+## Database & migrations
 
 ```sql
 accounts(id, username, email, created_at)
@@ -238,6 +285,7 @@ acct_sessions(id, session_id, mac, username, ssid, nas_ip, framed_ip,
               in_octets, out_octets, session_time, status, terminate_cause,
               started_at, updated_at, stopped_at)
 metrics_rollup(id, ts, active_sessions, total_in, total_out)   -- analytics samples
+api_clients(id, name, client_key, secret_hash, created_at, last_used_at, revoked_at)
 ```
 
 Migrations live in `migrations/`, named `NNN_*.sql`, and are **idempotent**
@@ -247,8 +295,12 @@ To add a schema change, drop in the next-numbered file — never edit an applied
 
 ## Security notes
 
-- **Admin UI auth** — HTTP Basic on every route; the UI refuses to serve if
-  `ADMIN_PASSWORD` is unset. Put it behind TLS / a reverse proxy for real use.
+- **Auth** — every route requires admin HTTP Basic (`ADMIN_USER`/`ADMIN_PASSWORD`)
+  or a valid API client credential. Put it behind TLS / a reverse proxy for real use.
+- **API clients have full access** — a client key/secret can do everything the admin
+  can (read PSKs in cleartext, create/delete accounts). Only the secret's hash is
+  stored; revoke compromised clients in Settings. Scope keys / add read-only keys
+  is a possible future refinement.
 - **PSKs are stored in cleartext** — unavoidable for per-user PSK (the AP needs the actual
   key to drive the handshake, and some vendors want the raw PSK back). Protect the
   database and restrict access to the host and the web UI accordingly.
