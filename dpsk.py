@@ -61,15 +61,21 @@ def _authenticate(vendor, mac, ssid, ap_mac, anonce_hex, eapol_hex, snonce_offse
         db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
         return {'reject': True}
 
-    # Tier 3: new device — try every PMK for this SSID
+    # Tier 3: new device — expensive O(n) MIC scan, so rate-limit it.
+    # Throttled requests reject silently (no DB write) to avoid log amplification.
+    if not _tier3_limiter.allow(mac):
+        return {'reject': True}
+
     for row in db.lookup_all_pmks(ssid):
         pmk = row['pmk_bytes']
         if _verify_mic(pmk, ap_mac, mac, anonce_hex, eapol_hex, snonce_offset):
             db.bind_mac(row['id'], mac)
             _to_cache(mac, ssid, row['id'], pmk, row['psk'], row['vlan_id'])
+            _tier3_limiter.record_success(mac)
             db.log_auth(mac, ssid, vendor, 'accept', cache_hit=False)
             return {'reply': _build_reply(vendor, pmk, row['psk'], row['vlan_id'])}
 
+    _tier3_limiter.record_failure(mac)
     db.log_auth(mac, ssid, vendor, 'reject', cache_hit=False)
     return {'reject': True}
 
@@ -258,6 +264,92 @@ def _build_reply(vendor, pmk, psk, vlan_id):
         reply.update(_vlan_attrs(vlan_id))
 
     return reply
+
+
+# -- Tier-3 rate limiting -----------------------------------------------------
+
+class _Tier3Limiter:
+    """Throttles the expensive Tier-3 brute-force scan.
+
+    Two layers: a per-MAC cooldown after repeated failures (cheap, targets a
+    single hammering client with no collateral) and a global token bucket on
+    scans/sec (the backstop against MAC-rotation floods). All in-memory and
+    lock-guarded; the per-MAC table is pruned so it can't grow without bound.
+    """
+
+    def __init__(self, rate, burst, max_failures, fail_window, cooldown,
+                 max_tracked, clock=time.time):
+        self._clock        = clock
+        self._rate         = rate
+        self._burst        = burst
+        self._max_failures = max_failures
+        self._fail_window  = fail_window
+        self._cooldown     = cooldown
+        self._max_tracked  = max_tracked
+        self._lock         = threading.Lock()
+        self._mac          = {}            # mac -> [fail_count, window_start, blocked_until]
+        self._tokens       = float(burst)
+        self._last_refill  = clock()
+
+    def allow(self, mac):
+        """True if a Tier-3 scan may run for this MAC right now."""
+        now = self._clock()
+        with self._lock:
+            st = self._mac.get(mac)
+            if st and st[2] > now:                       # still in cooldown
+                return False
+            # Global token bucket.
+            self._tokens = min(self._burst, self._tokens + (now - self._last_refill) * self._rate)
+            self._last_refill = now
+            if self._tokens < 1.0:
+                return False
+            self._tokens -= 1.0
+            return True
+
+    def record_failure(self, mac):
+        now = self._clock()
+        with self._lock:
+            st = self._mac.get(mac)
+            if not st or now - st[1] > self._fail_window:
+                st = [0, now, 0.0]
+            st[0] += 1
+            tripped = False
+            if st[0] >= self._max_failures:
+                st = [0, now, now + self._cooldown]      # enter cooldown
+                tripped = True
+            self._mac[mac] = st
+            if len(self._mac) > self._max_tracked:
+                self._prune(now)
+        if tripped:
+            _log_err(f"RADIX tier3 cooldown for {mac} ({self._cooldown:.0f}s) after repeated failures")
+
+    def record_success(self, mac):
+        with self._lock:
+            self._mac.pop(mac, None)
+
+    def _prune(self, now):
+        # Drop entries that are neither counting within the window nor blocked.
+        stale = [m for m, s in self._mac.items()
+                 if s[2] <= now and now - s[1] > self._fail_window]
+        for m in stale:
+            self._mac.pop(m, None)
+
+
+def _env_num(name, default, cast=float):
+    try:
+        return cast(os.environ[name])
+    except (KeyError, ValueError):
+        return default
+
+
+_tier3_limiter = _Tier3Limiter(
+    rate         = _env_num('RADIX_TIER3_RATE', 50.0),
+    burst        = _env_num('RADIX_TIER3_BURST', 100.0),
+    max_failures = _env_num('RADIX_TIER3_MAX_FAILURES', 10, int),
+    fail_window  = _env_num('RADIX_TIER3_FAIL_WINDOW', 60.0),
+    cooldown     = _env_num('RADIX_TIER3_COOLDOWN', 120.0),
+    max_tracked  = _env_num('RADIX_TIER3_MAX_TRACKED', 10000, int),
+)
 
 
 # -- cache --------------------------------------------------------------------

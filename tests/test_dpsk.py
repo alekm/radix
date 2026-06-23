@@ -192,3 +192,74 @@ def test_on_revoke_ignores_bad_payload():
     dpsk._on_revoke('not-an-int')
     assert len(dpsk._cache) == 1
     dpsk._cache.clear()
+
+
+# -- Tier-3 rate limiter ------------------------------------------------------
+
+class _FakeClock:
+    def __init__(self, t=1000.0):
+        self.t = t
+
+    def __call__(self):
+        return self.t
+
+    def advance(self, dt):
+        self.t += dt
+
+
+def _limiter(clock, **kw):
+    params = dict(rate=1e9, burst=1e9, max_failures=3, fail_window=60,
+                  cooldown=100, max_tracked=1000)
+    params.update(kw)
+    return dpsk._Tier3Limiter(clock=clock, **params)
+
+
+def test_per_mac_cooldown_after_repeated_failures():
+    clk = _FakeClock()
+    lim = _limiter(clk)
+    mac = 'de:ad:be:ef:00:01'
+
+    assert lim.allow(mac) is True
+    for _ in range(3):
+        lim.record_failure(mac)
+    # Tripped: further scans are short-circuited.
+    assert lim.allow(mac) is False
+    # Recovers after the cooldown elapses.
+    clk.advance(101)
+    assert lim.allow(mac) is True
+
+
+def test_failures_outside_window_do_not_accumulate():
+    clk = _FakeClock()
+    lim = _limiter(clk)
+    mac = 'de:ad:be:ef:00:02'
+
+    lim.record_failure(mac)
+    lim.record_failure(mac)
+    clk.advance(61)              # window expires, count resets
+    lim.record_failure(mac)
+    assert lim.allow(mac) is True
+
+
+def test_record_success_clears_cooldown():
+    clk = _FakeClock()
+    lim = _limiter(clk)
+    mac = 'de:ad:be:ef:00:03'
+
+    for _ in range(3):
+        lim.record_failure(mac)
+    assert lim.allow(mac) is False
+    lim.record_success(mac)
+    assert lim.allow(mac) is True
+
+
+def test_global_token_bucket_throttles_mac_rotation():
+    clk = _FakeClock()
+    # No per-MAC help here (every MAC distinct); only the bucket can save us.
+    lim = _limiter(clk, rate=1.0, burst=2.0, max_failures=999)
+
+    assert lim.allow('aa:00:00:00:00:01') is True
+    assert lim.allow('aa:00:00:00:00:02') is True
+    assert lim.allow('aa:00:00:00:00:03') is False   # bucket empty
+    clk.advance(1.0)                                  # refills one token
+    assert lim.allow('aa:00:00:00:00:04') is True
