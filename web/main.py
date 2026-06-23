@@ -6,7 +6,7 @@ import secrets
 import socket
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -120,6 +120,11 @@ async def dashboard(request: Request):
         "stats": db.get_stats(),
         "logs": db.get_recent_logs(10),
     })
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("static/favicon.ico")
 
 
 @app.get("/api/analytics")
