@@ -1,7 +1,7 @@
 {
   "name": "RADIX",
   "short_name": "RADIX",
-  "description": "DPSK authentication for enterprise Wi-Fi",
+  "description": "Per-user PSK authentication for enterprise Wi-Fi",
   "icons": [
     { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }

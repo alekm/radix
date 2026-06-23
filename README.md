@@ -2,10 +2,14 @@
   <img src="web/static/icons/og-banner.png" alt="RADIX" width="640">
 </p>
 
-RADIX is a **FreeRADIUS DPSK (Dynamic Pre-Shared Key) authentication backend** for
-enterprise Wi-Fi. Each user (or device) gets their own pre-shared key on a single
-shared SSID; RADIX verifies the 4-way-handshake material the AP forwards over
-RADIUS and hands back the matching key material, plus an optional per-key VLAN.
+RADIX is a **FreeRADIUS per-user PSK authentication backend** for enterprise Wi-Fi.
+Each user (or device) gets their own pre-shared key on a single shared SSID; RADIX
+verifies the 4-way-handshake material the AP forwards over RADIUS and hands back the
+matching key material, plus an optional per-key VLAN.
+
+Per-user PSK goes by a different name on each platform — TP-Link Omada **PPSK**,
+Ruckus **DPSK**, Cisco/Meraki **iPSK**, Aruba **MPSK** — and RADIX speaks the
+relevant one per vendor.
 
 It runs in-process inside FreeRADIUS via `rlm_python3` (no extra network hop) and
 ships with a small web UI for managing accounts, keys, and viewing auth logs.
@@ -140,13 +144,13 @@ VLAN assignment (all vendors) uses `Tunnel-Type=13`, `Tunnel-Medium-Type=IEEE-80
 
 Omada sends **two** RADIUS requests per connection, and both must Accept:
 
-1. **MAC auth** (no DPSK attrs; `NAS-Identifier` carries a `TP-Link` prefix).
+1. **MAC auth** (no PPSK attrs; `NAS-Identifier` carries a `TP-Link` prefix).
    - Known device (MAC bound in DB): Accept with `Tunnel-Password` = PSK + VLAN.
-   - Unknown device (first time): Accept with VLAN only — the PSK arrives via the DPSK blob.
-2. **DPSK blob** (`TPLink-Authentication-FindKey` present): Accept with the PMK reply above.
+   - Unknown device (first time): Accept with VLAN only — the PSK arrives via the PPSK blob.
+2. **PPSK blob** (`TPLink-Authentication-FindKey` present): Accept with the PMK reply above.
 
 If MAC auth is rejected, the AP can't bootstrap the 4-way handshake even when the
-DPSK request would succeed.
+PPSK request would succeed.
 
 ## Managing keys (web UI)
 
@@ -244,7 +248,7 @@ To add a schema change, drop in the next-numbered file — never edit an applied
 
 - **Admin UI auth** — HTTP Basic on every route; the UI refuses to serve if
   `ADMIN_PASSWORD` is unset. Put it behind TLS / a reverse proxy for real use.
-- **PSKs are stored in cleartext** — unavoidable for DPSK (the AP needs the actual
+- **PSKs are stored in cleartext** — unavoidable for per-user PSK (the AP needs the actual
   key to drive the handshake, and some vendors want the raw PSK back). Protect the
   database and restrict access to the host and the web UI accordingly.
 - **`clients.conf`** ships as `0.0.0.0/0` (any source with the secret). Scope it to
