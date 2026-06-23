@@ -1,32 +1,68 @@
 import base64
 import os
+import threading
+from contextlib import contextmanager
+
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
-_conn = None
+# FreeRADIUS runs rlm_python3 multi-threaded, and psycopg2 releases the GIL
+# during libpq I/O — so a single shared connection is unsafe. Each request
+# borrows its own connection from this pool for the duration of one operation.
+_pool = None
+_pool_lock = threading.Lock()
 
 
-def _get_conn():
-    global _conn
-    if _conn is None or _conn.closed:
-        _conn = psycopg2.connect(
-            host=os.environ['DB_HOST'],
-            dbname=os.environ['DB_NAME'],
-            user=os.environ['DB_USER'],
-            password=os.environ['DB_PASSWORD'],
-        )
-    return _conn
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1,
+                    maxconn=int(os.environ.get('DB_POOL_MAX', 16)),
+                    host=os.environ['DB_HOST'],
+                    dbname=os.environ['DB_NAME'],
+                    user=os.environ['DB_USER'],
+                    password=os.environ['DB_PASSWORD'],
+                )
+    return _pool
 
 
 def reset_conn():
-    """Force-close and re-open the DB connection (called after a query error)."""
-    global _conn
+    """Tear down the pool so the next call rebuilds it (recovery after fatal DB errors)."""
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            try:
+                _pool.closeall()
+            except Exception:
+                pass
+            _pool = None
+
+
+@contextmanager
+def _cursor(commit=False):
+    """Borrow a pooled connection for one operation.
+
+    Always ends the transaction (commit or rollback) so a failed statement can
+    never leave a borrowed connection in an aborted state for the next caller.
+    """
+    pool = _get_pool()
+    conn = pool.getconn()
     try:
-        if _conn and not _conn.closed:
-            _conn.close()
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            yield cur
+        conn.commit() if commit else conn.rollback()
     except Exception:
-        pass
-    _conn = None
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        pool.putconn(conn)
 
 
 def _row(row):
@@ -48,7 +84,7 @@ def lookup_pmk_by_mac(mac, ssid):
         ORDER BY pmk.id DESC
         LIMIT 1
     """
-    with _get_conn().cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+    with _cursor() as cur:
         cur.execute(sql, (mac, ssid))
         row = cur.fetchone()
     return _row(row) if row else None
@@ -62,7 +98,7 @@ def lookup_all_pmks(ssid):
         WHERE ssid = %s
         ORDER BY id DESC
     """
-    with _get_conn().cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+    with _cursor() as cur:
         cur.execute(sql, (ssid,))
         return [_row(r) for r in cur.fetchall()]
 
@@ -77,7 +113,7 @@ def lookup_pmk_by_mac_only(mac):
         ORDER BY pmk.id DESC
         LIMIT 1
     """
-    with _get_conn().cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+    with _cursor() as cur:
         cur.execute(sql, (mac,))
         row = cur.fetchone()
     return _row(row) if row else None
@@ -85,24 +121,21 @@ def lookup_pmk_by_mac_only(mac):
 
 def bind_mac(pmk_id, mac):
     """Persist discovered MAC → PMK mapping after first successful auth."""
-    conn = _get_conn()
-    with conn.cursor() as cur:
+    with _cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO mac_bindings (pmk_id, mac)
             VALUES (%s, %s)
             ON CONFLICT (mac, pmk_id) DO NOTHING
         """, (pmk_id, mac))
-    conn.commit()
 
 
 def log_auth(mac, ssid, vendor, result, cache_hit=False):
+    """Best-effort audit log; never propagates errors into the auth path."""
     try:
-        conn = _get_conn()
-        with conn.cursor() as cur:
+        with _cursor(commit=True) as cur:
             cur.execute("""
                 INSERT INTO auth_log (mac, ssid, vendor, result, cache_hit)
                 VALUES (%s, %s, %s, %s, %s)
             """, (mac, ssid, vendor, result, cache_hit))
-        conn.commit()
     except Exception:
         pass

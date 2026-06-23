@@ -89,16 +89,14 @@ def _handle_mac_auth(attrs):
         row = None
 
     if row is not None:
-        radiusd.radlog(radiusd.L_INFO, f"RADIX mac-auth hit {client_mac} psk={row['psk']} vlan={row['vlan_id']}")
+        radiusd.radlog(radiusd.L_INFO, f"RADIX mac-auth hit {client_mac} vlan={row['vlan_id']}")
+        db.log_auth(client_mac, ssid, 'tplink', 'accept', cache_hit=False)
         return {'reply': _build_tplink_reply(row['psk'], row['vlan_id'])}
 
     # Unknown device: Accept with default VLAN so DPSK blob can deliver the PMK
     radiusd.radlog(radiusd.L_INFO, f"RADIX mac-auth unknown {client_mac}, accepting with default VLAN")
-    return {'reply': {
-        'Tunnel-Type':             '13',
-        'Tunnel-Medium-Type':      'IEEE-802',
-        'Tunnel-Private-Group-Id': '1',
-    }}
+    db.log_auth(client_mac, ssid, 'tplink', 'accept', cache_hit=False)
+    return {'reply': _vlan_attrs(1)}
 
 
 # -- vendor detection ---------------------------------------------------------
@@ -215,13 +213,19 @@ def _derive_ptk(pmk, mac1, mac2, anonce, snonce):
 
 # -- reply builder ------------------------------------------------------------
 
-def _build_tplink_reply(psk, vlan_id, pmk=None):
-    reply = {
+def _vlan_attrs(vlan_id):
+    # Tunnel-Medium-Type must be the enum NAME "IEEE-802"; the integer "6"
+    # is silently dropped by FreeRADIUS.
+    return {
         'Tunnel-Type':             '13',
         'Tunnel-Medium-Type':      'IEEE-802',
-        'Tunnel-Private-Group-Id': str(vlan_id or 1),
-        'Tunnel-Password':         psk,
+        'Tunnel-Private-Group-Id': str(vlan_id),
     }
+
+
+def _build_tplink_reply(psk, vlan_id, pmk=None):
+    reply = _vlan_attrs(vlan_id or 1)
+    reply['Tunnel-Password'] = psk
     if pmk is not None:
         reply['TPLink-EAPOL-Found-PMK'] = pmk
     return reply
@@ -240,9 +244,7 @@ def _build_reply(vendor, pmk, psk, vlan_id):
         reply['Ruckus-DPSK'] = bytes([0]) + pmk
 
     if vlan_id:
-        reply['Tunnel-Type']             = '13'
-        reply['Tunnel-Medium-Type']      = '6'
-        reply['Tunnel-Private-Group-Id'] = str(vlan_id)
+        reply.update(_vlan_attrs(vlan_id))
 
     return reply
 

@@ -28,6 +28,8 @@ services:
       RADIUS_SECRET: ${RADIUS_SECRET}
       RADIUS_HOST: ${RADIUS_HOST:-}
       RADIUS_PORT: 1812
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy

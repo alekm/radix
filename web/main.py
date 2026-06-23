@@ -3,14 +3,39 @@ import io
 import os
 import secrets
 import socket
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import db
 
-app = FastAPI()
+# -- admin auth ---------------------------------------------------------------
+# All routes require HTTP Basic auth. Static assets (CSS) are mounted separately
+# and intentionally left open.
+_ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+_security = HTTPBasic()
+
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(_security)):
+    if not _ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ADMIN_PASSWORD is not set; admin UI is disabled.",
+        )
+    ok_user = secrets.compare_digest(credentials.username, _ADMIN_USER)
+    ok_pass = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
+    if not (ok_user and ok_pass):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+app = FastAPI(dependencies=[Depends(require_admin)])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 

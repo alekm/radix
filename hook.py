@@ -1,10 +1,14 @@
+import os
 import radiusd
 import dpsk
 import db
 
+_DEBUG = os.environ.get('RADIX_DEBUG', '').lower() in ('1', 'true', 'yes')
+
 def authorize(p):
     attrs = dict(p)
-    radiusd.radlog(radiusd.L_INFO, f"RADIX keys: {list(attrs.keys())}")
+    if _DEBUG:
+        radiusd.radlog(radiusd.L_DBG, f"RADIX keys: {list(attrs.keys())}")
     result = dpsk.handle(attrs)
     if result is None:
         return radiusd.RLM_MODULE_NOOP
