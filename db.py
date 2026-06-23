@@ -80,7 +80,7 @@ def lookup_pmk_by_mac(mac, ssid):
         SELECT pmk.id, pmk.psk, pmk.pmk_b64, pmk.vlan_id
         FROM pairwise_master_keys pmk
         JOIN mac_bindings mb ON mb.pmk_id = pmk.id
-        WHERE mb.mac = %s AND pmk.ssid = %s
+        WHERE mb.mac = %s AND pmk.ssid = %s AND pmk.revoked_at IS NULL
         ORDER BY pmk.id DESC
         LIMIT 1
     """
@@ -95,7 +95,7 @@ def lookup_all_pmks(ssid):
     sql = """
         SELECT id, psk, pmk_b64, vlan_id
         FROM pairwise_master_keys
-        WHERE ssid = %s
+        WHERE ssid = %s AND revoked_at IS NULL
         ORDER BY id DESC
     """
     with _cursor() as cur:
@@ -109,7 +109,7 @@ def lookup_pmk_by_mac_only(mac):
         SELECT pmk.id, pmk.psk, pmk.pmk_b64, pmk.vlan_id
         FROM pairwise_master_keys pmk
         JOIN mac_bindings mb ON mb.pmk_id = pmk.id
-        WHERE mb.mac = %s
+        WHERE mb.mac = %s AND pmk.revoked_at IS NULL
         ORDER BY pmk.id DESC
         LIMIT 1
     """

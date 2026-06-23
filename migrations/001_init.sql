@@ -1,3 +1,5 @@
+-- 001_init — base schema. Idempotent so it is safe to re-apply.
+
 CREATE TABLE IF NOT EXISTS accounts (
     id          SERIAL PRIMARY KEY,
     username    TEXT NOT NULL,
@@ -16,8 +18,8 @@ CREATE TABLE IF NOT EXISTS pairwise_master_keys (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON pairwise_master_keys (ssid);
-CREATE INDEX ON pairwise_master_keys (account_id);
+CREATE INDEX IF NOT EXISTS idx_pmk_ssid       ON pairwise_master_keys (ssid);
+CREATE INDEX IF NOT EXISTS idx_pmk_account_id ON pairwise_master_keys (account_id);
 
 -- MACs are discovered dynamically on first auth and bound here.
 -- One PSK can bind to multiple MACs (e.g. phone + laptop sharing a PSK).
@@ -29,7 +31,7 @@ CREATE TABLE IF NOT EXISTS mac_bindings (
     UNIQUE (mac, pmk_id)
 );
 
-CREATE INDEX ON mac_bindings (mac);
+CREATE INDEX IF NOT EXISTS idx_mac_bindings_mac ON mac_bindings (mac);
 
 CREATE TABLE IF NOT EXISTS auth_log (
     id          SERIAL PRIMARY KEY,
@@ -41,5 +43,5 @@ CREATE TABLE IF NOT EXISTS auth_log (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON auth_log (mac);
-CREATE INDEX ON auth_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_log_mac        ON auth_log (mac);
+CREATE INDEX IF NOT EXISTS idx_auth_log_created_at ON auth_log (created_at DESC);

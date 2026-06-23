@@ -43,7 +43,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/001_schema.sql
+      # Fresh installs: postgres runs every migration in order on first init.
+      # Existing installs: deploy.sh re-applies them (all migrations are idempotent).
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U radix"]
       interval: 5s

@@ -55,7 +55,8 @@ def get_accounts():
                    COUNT(DISTINCT pmk.id)  AS psk_count,
                    COUNT(DISTINCT mb.mac)  AS device_count
             FROM accounts a
-            LEFT JOIN pairwise_master_keys pmk ON pmk.account_id = a.id
+            LEFT JOIN pairwise_master_keys pmk
+                   ON pmk.account_id = a.id AND pmk.revoked_at IS NULL
             LEFT JOIN mac_bindings mb ON mb.pmk_id = pmk.id
             GROUP BY a.id
             ORDER BY a.created_at DESC
@@ -79,7 +80,7 @@ def get_account(account_id):
                    ) AS macs
             FROM pairwise_master_keys pmk
             LEFT JOIN mac_bindings mb ON mb.pmk_id = pmk.id
-            WHERE pmk.account_id = %s
+            WHERE pmk.account_id = %s AND pmk.revoked_at IS NULL
             GROUP BY pmk.id
             ORDER BY pmk.id DESC
         """, (account_id,))
@@ -124,9 +125,14 @@ def add_psk(account_id, psk, ssid, vlan_id=None):
 
 
 def revoke_psk(psk_id):
+    """Soft-delete: stamp revoked_at so the PSK stops authenticating but its
+    history (auth_log, bound MACs) is preserved for audit."""
     conn = _get_conn()
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM pairwise_master_keys WHERE id = %s", (psk_id,))
+        cur.execute(
+            "UPDATE pairwise_master_keys SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL",
+            (psk_id,),
+        )
     conn.commit()
 
 
