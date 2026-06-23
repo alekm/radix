@@ -26,6 +26,33 @@
   </div>
 </div>
 
+<div class="charts-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Authentication</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="authChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Sessions &amp; throughput</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="rollupChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Top talkers</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="talkersChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Session duration</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="durationChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">By vendor</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="vendorChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">By SSID</span></div>
+    <div class="card-body"><div style="position:relative;height:240px;"><canvas id="ssidChart"></canvas></div></div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-header">
     <span class="card-title">Recent Auth Events</span>
@@ -68,4 +95,99 @@
   <div class="empty">No auth events yet.</div>
   {% endif %}
 </div>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+(async function () {
+  let d;
+  try {
+    const r = await fetch('/api/analytics');
+    if (!r.ok) return;
+    d = await r.json();
+  } catch (e) { return; }
+
+  const GRID = 'rgba(148,163,184,0.15)';
+  const TICK = '#94a3b8';
+  const C = { green:'#22c55e', red:'#ef4444', accent:'#38bdf8', amber:'#f59e0b',
+              violet:'#a78bfa', pink:'#f472b6', teal:'#2dd4bf' };
+  const PALETTE = [C.accent, C.violet, C.amber, C.teal, C.pink, C.green, C.red];
+  Chart.defaults.color = TICK;
+  Chart.defaults.font.size = 11;
+
+  const humanBytes = v => {
+    v = +v || 0; const u = ['B','KB','MB','GB','TB']; let i = 0;
+    while (v >= 1024 && i < u.length-1) { v /= 1024; i++; }
+    return v.toFixed(v < 10 && i ? 1 : 0) + ' ' + u[i];
+  };
+  const shortTime = iso => {
+    const t = new Date(iso);
+    return (t.getMonth()+1) + '/' + t.getDate() + ' ' +
+           String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+  };
+  const baseOpts = (extra) => Object.assign({
+    responsive:true, maintainAspectRatio:false,
+    interaction:{ intersect:false, mode:'index' },
+    plugins:{ legend:{ labels:{ boxWidth:12 } } },
+  }, extra || {});
+  const lineScales = (yTitle, yCb) => ({
+    x:{ grid:{ color:GRID }, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8 } },
+    y:{ grid:{ color:GRID }, beginAtZero:true, title:{ display:!!yTitle, text:yTitle },
+        ticks: yCb ? { callback:yCb } : {} },
+  });
+  const has = o => o && o.labels && o.labels.length;
+
+  // Authentication health
+  if (has(d.auth)) {
+    new Chart(authChart, { type:'line',
+      data:{ labels:d.auth.labels.map(shortTime), datasets:[
+        { label:'Accepts', data:d.auth.accepts, borderColor:C.green, backgroundColor:'rgba(34,197,94,0.15)', fill:true, tension:0.3, pointRadius:0 },
+        { label:'Rejects', data:d.auth.rejects, borderColor:C.red, backgroundColor:'rgba(239,68,68,0.15)', fill:true, tension:0.3, pointRadius:0 },
+        { label:'Cache hit %', data:d.auth.cache_hit_rate, borderColor:C.accent, yAxisID:'y1', tension:0.3, pointRadius:0, borderDash:[4,3] },
+      ]},
+      options: baseOpts({ scales: Object.assign(lineScales('events'), {
+        y1:{ position:'right', beginAtZero:true, max:100, grid:{ drawOnChartArea:false }, ticks:{ callback:v=>v+'%' } } }) }) });
+  }
+
+  // Sessions & throughput
+  if (has(d.rollup)) {
+    new Chart(rollupChart, { type:'line',
+      data:{ labels:d.rollup.labels.map(shortTime), datasets:[
+        { label:'Active sessions', data:d.rollup.active, borderColor:C.violet, backgroundColor:'rgba(167,139,250,0.15)', fill:true, tension:0.3, pointRadius:0 },
+        { label:'Down Mbps', data:d.rollup.in_bps.map(b=>+(b*8/1e6).toFixed(2)), borderColor:C.teal, yAxisID:'y1', tension:0.3, pointRadius:0 },
+        { label:'Up Mbps', data:d.rollup.out_bps.map(b=>+(b*8/1e6).toFixed(2)), borderColor:C.amber, yAxisID:'y1', tension:0.3, pointRadius:0 },
+      ]},
+      options: baseOpts({ scales: Object.assign(lineScales('sessions'), {
+        y1:{ position:'right', beginAtZero:true, grid:{ drawOnChartArea:false }, title:{ display:true, text:'Mbps' } } }) }) });
+  }
+
+  // Top talkers
+  if (has(d.top_talkers)) {
+    new Chart(talkersChart, { type:'bar',
+      data:{ labels:d.top_talkers.labels, datasets:[
+        { label:'Down', data:d.top_talkers.in, backgroundColor:C.teal },
+        { label:'Up', data:d.top_talkers.out, backgroundColor:C.amber },
+      ]},
+      options: baseOpts({ indexAxis:'y',
+        scales:{ x:{ stacked:true, grid:{ color:GRID }, ticks:{ callback:humanBytes } },
+                 y:{ stacked:true, grid:{ color:GRID } } },
+        plugins:{ legend:{ labels:{ boxWidth:12 } },
+          tooltip:{ callbacks:{ label:c=>c.dataset.label+': '+humanBytes(c.parsed.x) } } } }) });
+  }
+
+  // Duration histogram
+  if (has(d.duration)) {
+    new Chart(durationChart, { type:'bar',
+      data:{ labels:d.duration.labels, datasets:[
+        { label:'Sessions', data:d.duration.counts, backgroundColor:C.accent } ]},
+      options: baseOpts({ plugins:{ legend:{ display:false } }, scales:lineScales() }) });
+  }
+
+  // Donuts
+  const donut = (cv, o) => has(o) && new Chart(cv, { type:'doughnut',
+    data:{ labels:o.labels, datasets:[{ data:o.counts, backgroundColor:PALETTE, borderWidth:0 }] },
+    options: baseOpts({ cutout:'58%', plugins:{ legend:{ position:'right', labels:{ boxWidth:12 } } } }) });
+  donut(vendorChart, d.vendor);
+  donut(ssidChart, d.ssid);
+})();
+</script>
 {% endblock %}

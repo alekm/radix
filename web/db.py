@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import os
+from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
 
@@ -26,6 +27,20 @@ def _get_conn():
     return _conn
 
 
+@contextmanager
+def _bg_cursor(commit=False):
+    """A dedicated short-lived connection for background work (retention,
+    analytics sampling/aggregation). Keeps those off the shared single-threaded
+    request connection so they're safe to run from a worker thread."""
+    conn = psycopg2.connect(**_conn_params())
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            yield cur
+        conn.commit() if commit else conn.rollback()
+    finally:
+        conn.close()
+
+
 def purge_old(days):
     """Delete auth_log / acct_sessions rows older than `days`. Uses a dedicated
     connection so it's safe to call from the retention worker thread (the shared
@@ -44,10 +59,129 @@ def purge_old(days):
                 (days,),
             )
             acct_n = cur.rowcount
+            cur.execute(
+                "DELETE FROM metrics_rollup WHERE ts < now() - make_interval(days => %s)",
+                (days,),
+            )
         conn.commit()
         return auth_n, acct_n
     finally:
         conn.close()
+
+
+# -- analytics ----------------------------------------------------------------
+
+ANALYTICS_WINDOW_DAYS = int(os.environ.get("ANALYTICS_WINDOW_DAYS", 7))
+
+
+def sample_metrics():
+    """Append one rollup sample: active session count + cumulative bytes."""
+    with _bg_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO metrics_rollup (active_sessions, total_in, total_out)
+            SELECT
+                count(*) FILTER (WHERE stopped_at IS NULL),
+                COALESCE(SUM(in_octets), 0),
+                COALESCE(SUM(out_octets), 0)
+            FROM acct_sessions
+        """)
+
+
+def compute_analytics():
+    """Run every dashboard aggregation once and return a JSON-able dict.
+    Called on a timer from the background loop; the request path serves the
+    cached result, so page loads never trigger these scans."""
+    win = f"{ANALYTICS_WINDOW_DAYS} days"
+    out = {"window_days": ANALYTICS_WINDOW_DAYS}
+
+    with _bg_cursor() as cur:
+        # Auth health: hourly accepts/rejects + cache hit-rate.
+        cur.execute("""
+            SELECT date_trunc('hour', created_at) AS bucket,
+                   count(*) FILTER (WHERE result = 'accept') AS accepts,
+                   count(*) FILTER (WHERE result = 'reject') AS rejects,
+                   count(*)                                  AS total,
+                   count(*) FILTER (WHERE cache_hit)         AS hits
+            FROM auth_log
+            WHERE created_at > now() - %s::interval
+            GROUP BY bucket ORDER BY bucket
+        """, (win,))
+        labels, accepts, rejects, hitrate = [], [], [], []
+        for r in cur.fetchall():
+            labels.append(r["bucket"].isoformat())
+            accepts.append(r["accepts"])
+            rejects.append(r["rejects"])
+            hitrate.append(round(r["hits"] / r["total"] * 100, 1) if r["total"] else None)
+        out["auth"] = {"labels": labels, "accepts": accepts,
+                       "rejects": rejects, "cache_hit_rate": hitrate}
+
+        # Vendor + SSID breakdowns.
+        cur.execute("""
+            SELECT COALESCE(NULLIF(vendor, ''), 'unknown') AS k, count(*) AS n
+            FROM auth_log WHERE created_at > now() - %s::interval
+            GROUP BY k ORDER BY n DESC
+        """, (win,))
+        rows = cur.fetchall()
+        out["vendor"] = {"labels": [r["k"] for r in rows], "counts": [r["n"] for r in rows]}
+
+        cur.execute("""
+            SELECT COALESCE(NULLIF(ssid, ''), 'unknown') AS k, count(*) AS n
+            FROM auth_log WHERE created_at > now() - %s::interval
+            GROUP BY k ORDER BY n DESC LIMIT 12
+        """, (win,))
+        rows = cur.fetchall()
+        out["ssid"] = {"labels": [r["k"] for r in rows], "counts": [r["n"] for r in rows]}
+
+        # Top talkers by total bytes (username if present, else MAC).
+        cur.execute("""
+            SELECT COALESCE(NULLIF(username, ''), mac, 'unknown') AS who,
+                   SUM(in_octets) AS i, SUM(out_octets) AS o
+            FROM acct_sessions WHERE updated_at > now() - %s::interval
+            GROUP BY who ORDER BY SUM(in_octets) + SUM(out_octets) DESC LIMIT 10
+        """, (win,))
+        rows = cur.fetchall()
+        out["top_talkers"] = {
+            "labels": [r["who"] for r in rows],
+            "in":     [int(r["i"] or 0) for r in rows],
+            "out":    [int(r["o"] or 0) for r in rows],
+        }
+
+        # Session duration histogram.
+        cur.execute("""
+            SELECT width_bucket(session_time, ARRAY[300, 1800, 7200, 28800]) AS b,
+                   count(*) AS n
+            FROM acct_sessions WHERE updated_at > now() - %s::interval
+            GROUP BY b ORDER BY b
+        """, (win,))
+        hist = {r["b"]: r["n"] for r in cur.fetchall()}
+        dur_labels = ["<5m", "5–30m", "30m–2h", "2–8h", ">8h"]
+        out["duration"] = {"labels": dur_labels,
+                           "counts": [hist.get(i, 0) for i in range(5)]}
+
+        # Concurrency + throughput from the rollup samples.
+        cur.execute("""
+            SELECT ts, active_sessions, total_in, total_out
+            FROM metrics_rollup
+            WHERE ts > now() - %s::interval
+            ORDER BY ts
+        """, (win,))
+        r_labels, active, tin, tout = [], [], [], []
+        prev = None
+        for r in cur.fetchall():
+            r_labels.append(r["ts"].isoformat())
+            active.append(r["active_sessions"])
+            if prev is None:
+                tin.append(0.0); tout.append(0.0)
+            else:
+                dt = (r["ts"] - prev["ts"]).total_seconds() or 1
+                # Clamp: retention purges can drop cumulative totals.
+                tin.append(round(max(0, r["total_in"]  - prev["total_in"])  / dt, 1))
+                tout.append(round(max(0, r["total_out"] - prev["total_out"]) / dt, 1))
+            prev = r
+        out["rollup"] = {"labels": r_labels, "active": active,
+                         "in_bps": tin, "out_bps": tout}
+
+    return out
 
 
 def _compute_pmk(psk: str, ssid: str) -> str:

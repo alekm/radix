@@ -103,6 +103,10 @@ All configuration is via environment variables (see `.env.example`).
 | `RADIUS_HOST` `RADIUS_PORT` | `—` / `1812` | web | Shown on the Settings page so you can configure APs |
 | `ADMIN_USER` | `admin` | web | Admin UI username |
 | `ADMIN_PASSWORD` | — | web | Admin UI password. **If unset, the UI refuses to serve.** |
+| `RETENTION_DAYS` | `90` | web | Daily purge of `auth_log` / `acct_sessions` / `metrics_rollup` older than this; `0` disables |
+| `RETENTION_INTERVAL_HOURS` | `24` | web | How often the retention sweep runs |
+| `ANALYTICS_INTERVAL_SECONDS` | `300` | web | How often dashboard analytics are sampled + recomputed |
+| `ANALYTICS_WINDOW_DAYS` | `7` | web | Time window the dashboard charts cover |
 | `RADIX_TIER3_RATE` | `50` | radius | Global Tier-3 scans/sec (token-bucket refill) |
 | `RADIX_TIER3_BURST` | `100` | radius | Token-bucket capacity |
 | `RADIX_TIER3_MAX_FAILURES` | `10` | radius | Per-MAC failures before cooldown |
@@ -147,13 +151,35 @@ DPSK request would succeed.
 
 ## Managing keys (web UI)
 
-- **Dashboard** — counts and recent auth events.
+- **Dashboard** — top-line counts, recent auth events, and analytics charts
+  (see below).
 - **Accounts** — create accounts; drill in to assign or revoke PSKs (with optional VLAN).
   A PSK's MAC bindings are learned automatically on first successful auth.
 - **Bulk** — upload a CSV (`username`, `email`, `vlan`) for one SSID; downloads the
   generated PSKs as a CSV.
 - **Settings** — RADIUS connection details to configure your APs.
 - **Logs** — filterable auth log (by MAC / SSID / result).
+
+### Analytics dashboard
+
+The dashboard renders charts with [Chart.js](web/static/vendor/chart.umd.min.js)
+(vendored — no CDN, works offline): authentication accepts/rejects + cache
+hit-rate over time, sessions & throughput, top talkers by data, session-duration
+histogram, and breakdowns by vendor and SSID.
+
+It's built to stay light enough for a Raspberry Pi: the web container samples a
+small `metrics_rollup` row and recomputes all aggregates on a timer
+(`ANALYTICS_INTERVAL_SECONDS`), caching the result in memory. The browser fetches
+that cached JSON from `/api/analytics`, so page loads never trigger table scans —
+load cost is independent of how many people are viewing. Charts cover the last
+`ANALYTICS_WINDOW_DAYS`.
+
+### Data retention
+
+`auth_log`, `acct_sessions`, and `metrics_rollup` grow continuously. A background
+sweep in the web container deletes rows older than `RETENTION_DAYS` (default 90;
+set `0` to disable). Active sessions are preserved regardless of age (their
+`updated_at` advances on every interim update).
 
 ### Revocation
 
@@ -207,6 +233,7 @@ auth_log(id, mac, ssid, vendor, result, cache_hit, created_at)
 acct_sessions(id, session_id, mac, username, ssid, nas_ip, framed_ip,
               in_octets, out_octets, session_time, status, terminate_cause,
               started_at, updated_at, stopped_at)
+metrics_rollup(id, ts, active_sessions, total_in, total_out)   -- analytics samples
 ```
 
 Migrations live in `migrations/`, named `NNN_*.sql`, and are **idempotent**

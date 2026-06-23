@@ -6,7 +6,7 @@ import secrets
 import socket
 from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -56,18 +56,34 @@ async def _retention_loop():
         await asyncio.sleep(_RETENTION_INTERVAL_HOURS * 3600)
 
 
+# -- analytics (Pi-friendly: sample + aggregate on a timer, serve from cache) --
+_ANALYTICS = {"data": None}
+_ANALYTICS_INTERVAL = float(os.environ.get("ANALYTICS_INTERVAL_SECONDS", 300))
+
+
+async def _analytics_loop():
+    while True:
+        try:
+            await asyncio.to_thread(db.sample_metrics)
+            _ANALYTICS["data"] = await asyncio.to_thread(db.compute_analytics)
+        except Exception as exc:
+            print(f"[analytics] error: {exc}", flush=True)
+        await asyncio.sleep(_ANALYTICS_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app):
-    task = None
+    tasks = []
     if _RETENTION_DAYS > 0:
-        task = asyncio.create_task(_retention_loop())
+        tasks.append(asyncio.create_task(_retention_loop()))
     else:
         print("[retention] disabled (RETENTION_DAYS <= 0)", flush=True)
+    tasks.append(asyncio.create_task(_analytics_loop()))
     try:
         yield
     finally:
-        if task:
-            task.cancel()
+        for t in tasks:
+            t.cancel()
 
 
 app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_admin)])
@@ -104,6 +120,15 @@ async def dashboard(request: Request):
         "stats": db.get_stats(),
         "logs": db.get_recent_logs(10),
     })
+
+
+@app.get("/api/analytics")
+async def analytics(request: Request):
+    data = _ANALYTICS["data"]
+    if data is None:  # cold start before the first refresh — compute once
+        data = await asyncio.to_thread(db.compute_analytics)
+        _ANALYTICS["data"] = data
+    return JSONResponse(data)
 
 
 # -- accounts -----------------------------------------------------------------
