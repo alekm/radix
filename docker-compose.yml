@@ -11,6 +11,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       RADIUS_SECRET: ${RADIUS_SECRET}
       PMK_CACHE_TTL: ${PMK_CACHE_TTL:-86400}
+      TZ: ${TZ:-America/Kentucky/Louisville}
+      PGTZ: ${TZ:-America/Kentucky/Louisville}
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,6 +33,8 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      TZ: ${TZ:-America/Kentucky/Louisville}
+      PGTZ: ${TZ:-America/Kentucky/Louisville}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,6 +46,8 @@ services:
       POSTGRES_DB: radix
       POSTGRES_USER: radix
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ:-America/Kentucky/Louisville}
+      PGTZ: ${TZ:-America/Kentucky/Louisville}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Fresh installs: postgres runs every migration in order on first init.
