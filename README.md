@@ -226,6 +226,13 @@ manually against a throwaway `postgres:16` container (see commit history).
 - **Revoked device still connecting:** the Tier-1 cache or a missed `NOTIFY`;
   restart the `radius` container to flush the cache.
 
+## Development note
+
+The design, methodology, verification, code review, testing, and operational
+procedures for this project are my own. A large portion of the code and the
+product requirements were generated with the assistance of an AI/LLM, working
+under my direction and reviewed and tested by me before inclusion.
+
 ## License
 
 [MIT](LICENSE) © 2026 Alek M
