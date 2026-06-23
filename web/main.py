@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import csv
 import io
 import os
 import secrets
 import socket
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -18,23 +20,33 @@ import db
 # and intentionally left open.
 _ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 _ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-_security = HTTPBasic()
 
 
-def require_admin(credentials: HTTPBasicCredentials = Depends(_security)):
-    if not _ADMIN_PASSWORD:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ADMIN_PASSWORD is not set; admin UI is disabled.",
-        )
-    ok_user = secrets.compare_digest(credentials.username, _ADMIN_USER)
-    ok_pass = secrets.compare_digest(credentials.password, _ADMIN_PASSWORD)
-    if not (ok_user and ok_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+def _is_admin(user, password):
+    return bool(_ADMIN_PASSWORD) and \
+        secrets.compare_digest(user, _ADMIN_USER) and \
+        secrets.compare_digest(password, _ADMIN_PASSWORD)
+
+
+def require_auth(request: Request):
+    """Accept admin HTTP Basic (browser/UI) OR an API client credential
+    (Bearer "<key>:<secret>", or Basic with the key as user / secret as pass)."""
+    auth = request.headers.get("Authorization", "")
+    try:
+        if auth.startswith("Bearer "):
+            key, sep, secret = auth[7:].strip().partition(":")
+            if sep and db.verify_api_client(key, secret):
+                return
+        elif auth.startswith("Basic "):
+            user, _, password = base64.b64decode(auth[6:]).decode("utf-8", "replace").partition(":")
+            if _is_admin(user, password) or db.verify_api_client(user, password):
+                return
+    except Exception:
+        pass
+    raise HTTPException(
+        status_code=401, detail="Unauthorized",
+        headers={"WWW-Authenticate": "Basic"},
+    )
 
 
 # -- log/session retention ----------------------------------------------------
@@ -86,7 +98,7 @@ async def lifespan(app):
             t.cancel()
 
 
-app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_admin)])
+app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_auth)])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -134,6 +146,106 @@ async def analytics(request: Request):
         data = await asyncio.to_thread(db.compute_analytics)
         _ANALYTICS["data"] = data
     return JSONResponse(data)
+
+
+# -- JSON API (admin or API-client auth) --------------------------------------
+# Programmatic surface for the MCP / external callers. Authenticated by the
+# app-level require_auth dependency (admin Basic or API client key/secret).
+
+class AccountIn(BaseModel):
+    username: str
+    email: Optional[str] = None
+
+
+class PskIn(BaseModel):
+    ssid: str
+    psk: Optional[str] = None        # generated if omitted
+    vlan_id: Optional[int] = None    # omit/null = untagged
+
+
+class VlanIn(BaseModel):
+    vlan_id: Optional[int] = None
+
+
+class RekeyIn(BaseModel):
+    psk: Optional[str] = None        # generated if omitted
+
+
+@app.get("/api/whoami")
+async def api_whoami():
+    return {"authenticated": True}
+
+
+@app.get("/api/stats")
+async def api_stats():
+    return db.get_stats()
+
+
+@app.get("/api/accounts")
+async def api_accounts():
+    return db.get_accounts()
+
+
+@app.post("/api/accounts", status_code=201)
+async def api_account_create(body: AccountIn):
+    return {"id": db.create_account(body.username, body.email or "")}
+
+
+@app.get("/api/accounts/{account_id}")
+async def api_account_get(account_id: int):
+    account, psks = db.get_account(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="account not found")
+    return {"account": account, "psks": psks}
+
+
+@app.patch("/api/accounts/{account_id}")
+async def api_account_update(account_id: int, body: AccountIn):
+    db.update_account(account_id, body.username, body.email or "")
+    return {"ok": True}
+
+
+@app.delete("/api/accounts/{account_id}")
+async def api_account_delete(account_id: int):
+    db.delete_account(account_id)
+    return {"ok": True}
+
+
+@app.post("/api/accounts/{account_id}/psks", status_code=201)
+async def api_psk_add(account_id: int, body: PskIn):
+    psk = body.psk or _generate_psk()
+    pid = db.add_psk(account_id, psk, body.ssid, body.vlan_id)
+    return {"id": pid, "psk": psk, "ssid": body.ssid, "vlan_id": body.vlan_id}
+
+
+@app.post("/api/psks/{psk_id}/rekey")
+async def api_psk_rekey(psk_id: int, body: RekeyIn):
+    psk = body.psk or _generate_psk()
+    if not db.rekey_psk(psk_id, psk):
+        raise HTTPException(status_code=404, detail="psk not found")
+    return {"id": psk_id, "psk": psk}
+
+
+@app.patch("/api/psks/{psk_id}/vlan")
+async def api_psk_vlan(psk_id: int, body: VlanIn):
+    db.update_psk_vlan(psk_id, body.vlan_id)
+    return {"ok": True}
+
+
+@app.delete("/api/psks/{psk_id}")
+async def api_psk_revoke(psk_id: int):
+    db.revoke_psk(psk_id)
+    return {"ok": True}
+
+
+@app.get("/api/sessions")
+async def api_sessions(active: bool = False):
+    return db.get_sessions(active_only=active)
+
+
+@app.get("/api/logs")
+async def api_logs(mac: Optional[str] = None, ssid: Optional[str] = None, result: Optional[str] = None):
+    return db.get_logs(mac=mac, ssid=ssid, result=result)
 
 
 # -- accounts -----------------------------------------------------------------
