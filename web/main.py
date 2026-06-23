@@ -267,14 +267,37 @@ async def sessions(request: Request, active: Optional[str] = None):
 
 # -- settings -----------------------------------------------------------------
 
-@app.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    return templates.TemplateResponse("settings.html", {
+def _settings_ctx(request, new_client=None):
+    return {
         "request": request,
         "radius_ip": os.environ.get("RADIUS_HOST", "—"),
         "radius_port": int(os.environ.get("RADIUS_PORT", 1812)),
         "radius_secret": os.environ.get("RADIUS_SECRET", ""),
-    })
+        "api_clients": db.get_api_clients(),
+        "new_client": new_client,
+    }
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    return templates.TemplateResponse("settings.html", _settings_ctx(request))
+
+
+@app.post("/settings/api-clients", response_class=HTMLResponse)
+async def api_client_create(request: Request, name: str = Form(...)):
+    key, secret = db.generate_api_credentials()
+    db.create_api_client(name.strip() or "client", key, secret)
+    # Render directly (no redirect) so the one-time secret can be shown once.
+    return templates.TemplateResponse(
+        "settings.html",
+        _settings_ctx(request, new_client={"name": name, "key": key, "secret": secret}),
+    )
+
+
+@app.post("/settings/api-clients/{client_id}/revoke")
+async def api_client_revoke(client_id: int):
+    db.revoke_api_client(client_id)
+    return RedirectResponse("/settings", status_code=303)
 
 
 # -- logs ---------------------------------------------------------------------

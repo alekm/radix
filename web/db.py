@@ -1,6 +1,8 @@
 import base64
 import hashlib
+import hmac
 import os
+import secrets
 from contextlib import contextmanager
 import psycopg2
 import psycopg2.extras
@@ -354,6 +356,72 @@ def update_account(account_id, username, email):
             (username, email or None, account_id),
         )
     conn.commit()
+
+
+# -- API clients --------------------------------------------------------------
+
+def _hash_secret(secret):
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
+def generate_api_credentials():
+    """Return (client_key, secret). The secret is shown once; only its hash is stored."""
+    return "rdx_" + secrets.token_hex(8), secrets.token_urlsafe(32)
+
+
+def create_api_client(name, client_key, secret):
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO api_clients (name, client_key, secret_hash) VALUES (%s, %s, %s) RETURNING id",
+            (name, client_key, _hash_secret(secret)),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return row[0]
+
+
+def get_api_clients():
+    with _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""
+            SELECT id, name, client_key, created_at, last_used_at, revoked_at
+            FROM api_clients ORDER BY created_at DESC
+        """)
+        return cur.fetchall()
+
+
+def revoke_api_client(client_id):
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE api_clients SET revoked_at = now() WHERE id = %s AND revoked_at IS NULL",
+            (client_id,),
+        )
+    conn.commit()
+
+
+def verify_api_client(client_key, secret):
+    """Return the client id if key+secret match an active client, else None.
+    Constant-time comparison; stamps last_used_at on success. (For the future
+    JSON API / MCP — not yet enforced on any route.)"""
+    if not client_key or not secret:
+        return None
+    with _get_conn().cursor() as cur:
+        cur.execute(
+            "SELECT id, secret_hash FROM api_clients WHERE client_key = %s AND revoked_at IS NULL",
+            (client_key,),
+        )
+        row = cur.fetchone()
+    if not row or not hmac.compare_digest(row[1], _hash_secret(secret)):
+        return None
+    try:
+        conn = _get_conn()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE api_clients SET last_used_at = now() WHERE id = %s", (row[0],))
+        conn.commit()
+    except Exception:
+        pass
+    return row[0]
 
 
 # -- accounting sessions ------------------------------------------------------
