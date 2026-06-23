@@ -311,6 +311,51 @@ def revoke_psk(psk_id):
     conn.commit()
 
 
+def update_psk_vlan(psk_id, vlan_id):
+    """Change a PSK's VLAN. Safe — the PMK depends on psk+ssid, not the VLAN.
+    NOTIFY evicts any cached entry so the new VLAN applies on the next auth."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pairwise_master_keys SET vlan_id = %s WHERE id = %s AND revoked_at IS NULL",
+            (int(vlan_id) if vlan_id else None, psk_id),
+        )
+        cur.execute("SELECT pg_notify(%s, %s)", (REVOKE_CHANNEL, str(psk_id)))
+    conn.commit()
+
+
+def rekey_psk(psk_id, new_psk):
+    """Replace a PSK's key: recompute the PMK, clear its learned MAC bindings
+    (the device must reconfigure), and evict the cached PMK. Returns False if
+    the PSK doesn't exist / is revoked."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT ssid FROM pairwise_master_keys WHERE id = %s AND revoked_at IS NULL", (psk_id,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        pmk_b64 = _compute_pmk(new_psk, row[0])
+        cur.execute(
+            "UPDATE pairwise_master_keys SET psk = %s, pmk_b64 = %s WHERE id = %s",
+            (new_psk, pmk_b64, psk_id),
+        )
+        cur.execute("DELETE FROM mac_bindings WHERE pmk_id = %s", (psk_id,))
+        cur.execute("SELECT pg_notify(%s, %s)", (REVOKE_CHANNEL, str(psk_id)))
+    conn.commit()
+    return True
+
+
+def update_account(account_id, username, email):
+    """Rename an account / change its email. Metadata only; no effect on auth."""
+    conn = _get_conn()
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE accounts SET username = %s, email = %s WHERE id = %s",
+            (username, email or None, account_id),
+        )
+    conn.commit()
+
+
 # -- accounting sessions ------------------------------------------------------
 
 def get_sessions(limit=200, active_only=False):

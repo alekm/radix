@@ -169,6 +169,28 @@ async def account_delete(account_id: int):
     return RedirectResponse("/accounts", status_code=303)
 
 
+@app.post("/accounts/{account_id}/edit")
+async def account_edit(
+    account_id: int,
+    username: str = Form(...),
+    email: str = Form(""),
+):
+    db.update_account(account_id, username, email)
+    return RedirectResponse(f"/accounts/{account_id}", status_code=303)
+
+
+@app.post("/accounts/{account_id}/psks/{psk_id}/vlan")
+async def psk_set_vlan(account_id: int, psk_id: int, vlan_id: str = Form("")):
+    db.update_psk_vlan(psk_id, vlan_id.strip() or None)
+    return RedirectResponse(f"/accounts/{account_id}", status_code=303)
+
+
+@app.post("/accounts/{account_id}/psks/{psk_id}/rekey")
+async def psk_rekey(account_id: int, psk_id: int, psk: str = Form("")):
+    db.rekey_psk(psk_id, psk.strip() or _generate_psk())
+    return RedirectResponse(f"/accounts/{account_id}", status_code=303)
+
+
 @app.post("/accounts/{account_id}/psks")
 async def psk_add(
     account_id: int,
