@@ -9,17 +9,45 @@ _conn = None
 REVOKE_CHANNEL = 'radix_revoke'
 
 
+def _conn_params():
+    return dict(
+        host=os.environ['DB_HOST'],
+        dbname=os.environ['DB_NAME'],
+        user=os.environ['DB_USER'],
+        password=os.environ['DB_PASSWORD'],
+    )
+
+
 def _get_conn():
     global _conn
     if _conn is None or _conn.closed:
-        _conn = psycopg2.connect(
-            host=os.environ['DB_HOST'],
-            dbname=os.environ['DB_NAME'],
-            user=os.environ['DB_USER'],
-            password=os.environ['DB_PASSWORD'],
-        )
+        _conn = psycopg2.connect(**_conn_params())
         _conn.autocommit = False
     return _conn
+
+
+def purge_old(days):
+    """Delete auth_log / acct_sessions rows older than `days`. Uses a dedicated
+    connection so it's safe to call from the retention worker thread (the shared
+    _conn is single-threaded). Returns (auth_log_deleted, acct_sessions_deleted).
+    Active sessions are preserved (updated_at advances on every interim)."""
+    conn = psycopg2.connect(**_conn_params())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM auth_log WHERE created_at < now() - make_interval(days => %s)",
+                (days,),
+            )
+            auth_n = cur.rowcount
+            cur.execute(
+                "DELETE FROM acct_sessions WHERE updated_at < now() - make_interval(days => %s)",
+                (days,),
+            )
+            acct_n = cur.rowcount
+        conn.commit()
+        return auth_n, acct_n
+    finally:
+        conn.close()
 
 
 def _compute_pmk(psk: str, ssid: str) -> str:

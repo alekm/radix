@@ -30,6 +30,7 @@ services:
       RADIUS_PORT: 1812
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      RETENTION_DAYS: ${RETENTION_DAYS:-90}
     depends_on:
       postgres:
         condition: service_healthy

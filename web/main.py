@@ -1,8 +1,10 @@
+import asyncio
 import csv
 import io
 import os
 import secrets
 import socket
+from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -35,7 +37,40 @@ def require_admin(credentials: HTTPBasicCredentials = Depends(_security)):
         )
 
 
-app = FastAPI(dependencies=[Depends(require_admin)])
+# -- log/session retention ----------------------------------------------------
+# Auth and accounting rows accumulate forever otherwise. A daily background
+# sweep trims anything older than RETENTION_DAYS (set <= 0 to disable).
+_RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", 90))
+_RETENTION_INTERVAL_HOURS = float(os.environ.get("RETENTION_INTERVAL_HOURS", 24))
+
+
+async def _retention_loop():
+    while True:
+        try:
+            auth_n, acct_n = await asyncio.to_thread(db.purge_old, _RETENTION_DAYS)
+            if auth_n or acct_n:
+                print(f"[retention] purged auth_log={auth_n} acct_sessions={acct_n} "
+                      f"(older than {_RETENTION_DAYS}d)", flush=True)
+        except Exception as exc:
+            print(f"[retention] error: {exc}", flush=True)
+        await asyncio.sleep(_RETENTION_INTERVAL_HOURS * 3600)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    task = None
+    if _RETENTION_DAYS > 0:
+        task = asyncio.create_task(_retention_loop())
+    else:
+        print("[retention] disabled (RETENTION_DAYS <= 0)", flush=True)
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+
+
+app = FastAPI(lifespan=lifespan, dependencies=[Depends(require_admin)])
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
