@@ -121,7 +121,7 @@ Vendor is detected by which attribute is present in the Access-Request.
 |--------|-----------|------|--------|-------------|--------|---------------|--------|
 | TP-Link Omada | `TPLink-Authentication-FindKey` | sub-TLV 3 | sub-TLV 6 (radio BSSID), fallback 4 | sub-TLV 1 | sub-TLV 2 | 17 | **Working** |
 | OpenWiFi | `FreeRADIUS-802.1X-Anonce` | `Called-Station-Id` after `:` | `Called-Station-Id` before `:` | `FreeRADIUS-802.1X-EAPoL-Key-Msg` | `FreeRADIUS-802.1X-Anonce` | 34 | Implemented |
-| Ruckus eDPSK | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-SSID` | `Ruckus-BSSID` | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-DPSK-Anonce` | 17 | **Unleashed: working**; SmartZone / Ruckus One: untested |
+| Ruckus eDPSK | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-SSID` | `Ruckus-BSSID` | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-DPSK-Anonce` | 17 | **Working** — Unleashed, Ruckus One, SmartZone (vSZ 7.2) |
 
 ### Reply attributes on success
 
@@ -129,8 +129,8 @@ Vendor is detected by which attribute is present in the Access-Request.
 |--------|-----------|-------|
 | OpenWiFi | `Tunnel-Password` | Raw PSK string |
 | TP-Link | `TPLink-EAPOL-Found-PMK` | Raw 32-byte PMK (+ `Tunnel-Password` + VLAN attrs) |
-| Ruckus Unleashed (default) | `MS-MPPE-Recv-Key` | 32-byte PMK |
-| Ruckus SZ (`RUCKUS_DPSK_REPLY=vsa`) | `Ruckus-DPSK` | `\x00` + 32-byte PMK |
+| Ruckus — Unleashed / Ruckus One / SmartZone (default) | `MS-MPPE-Recv-Key` | 32-byte PMK |
+| Ruckus `RUCKUS_DPSK_REPLY=vsa` (fallback, untested) | `Ruckus-DPSK` | `\x00` + 32-byte PMK |
 
 VLAN assignment (all vendors) uses `Tunnel-Type=13`, `Tunnel-Medium-Type=IEEE-802`,
 `Tunnel-Private-Group-Id=<vlan>`. Note: `Tunnel-Medium-Type` must be the enum name
