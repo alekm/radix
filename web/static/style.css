@@ -232,6 +232,30 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
   color: var(--muted);
 }
 
+/* Click-to-reveal secret (PSK). Blurred until toggled; revealed text is
+   selectable so it can be copied. */
+.psk-reveal {
+  filter: blur(4px);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 3px;
+  transition: filter .12s ease;
+}
+.psk-reveal:hover { filter: blur(3px); }
+.psk-reveal.shown {
+  filter: none;
+  user-select: text;
+  background: var(--surface2);
+}
+.psk-reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.psk-cell { display: inline-flex; align-items: center; gap: 8px; }
+.psk-copy { padding: 3px 7px; display: inline-flex; align-items: center; }
+.psk-copy svg { display: block; }
+.psk-copy .icon-check { display: none; }
+.psk-copy.btn-copied .icon-copy { display: none; }
+.psk-copy.btn-copied .icon-check { display: block; }
+.btn-copied { color: var(--success); border-color: var(--success); }
+
 td a { color: var(--text); font-weight: 500; }
 td a:hover { color: var(--accent); }
 

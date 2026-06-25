@@ -99,7 +99,26 @@
         {% for p in psks %}
         <tr>
           <td>{{ p.ssid }}</td>
-          <td class="mono">{{ p.psk }}</td>
+          <td class="mono">
+            <span class="psk-cell">
+              <span class="psk-reveal" tabindex="0" role="button" aria-label="Reveal PSK"
+                    title="Click to reveal / hide"
+                    onclick="this.classList.toggle('shown')"
+                    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('shown');}">{{ p.psk }}</span>
+              <button type="button" class="btn btn-outline btn-sm psk-copy" title="Copy PSK"
+                      aria-label="Copy PSK" onclick="copyPsk(this)">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </button>
+            </span>
+          </td>
           <td>
             <form method="post" action="/accounts/{{ account.id }}/psks/{{ p.id }}/vlan" class="inline-edit">
               <input type="number" name="vlan_id" value="{{ p.vlan_id or '' }}" min="1" max="4094"
@@ -215,6 +234,31 @@ function generatePsk() {
 }
 function genInto(btn) {
   btn.parentElement.querySelector('input[name=psk]').value = randomPsk();
+}
+function copyPsk(btn) {
+  const span = btn.parentElement.querySelector('.psk-reveal');
+  if (!span) return;
+  const text = span.textContent.trim();
+  const done = () => {
+    btn.classList.add('btn-copied');                 // CSS swaps clipboard → check
+    setTimeout(() => btn.classList.remove('btn-copied'), 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  // Clipboard API needs a secure context; fall back for plain-http access.
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* ignore */ }
+  document.body.removeChild(ta);
 }
 </script>
 
