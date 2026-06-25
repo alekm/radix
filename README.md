@@ -366,6 +366,26 @@ procedures for this project are my own. A large portion of the code and the
 product requirements were generated with the assistance of an AI/LLM, working
 under my direction and reviewed and tested by me before inclusion.
 
+## Building & licensing
+
+RADIX ships as **source plus a `Dockerfile`** — there is no prebuilt image to pull.
+Run `docker compose build` (or `docker compose up --build`) on the target, and the
+`radius` image installs FreeRADIUS from the Ubuntu apt repositories at build time.
+
+This is deliberate. FreeRADIUS is **GPLv2**, and RADIX loads into it in-process via
+`rlm_python3`. By keeping it a build-time dependency that *you* fetch on *your* host,
+no FreeRADIUS binaries are ever redistributed and no combined work is ever conveyed —
+the GPLv2 obligations stay where they belong (with Ubuntu/Canonical, who already
+provide the corresponding source). Distributing a prebuilt image would pull those
+obligations onto the distributor, so the project doesn't.
+
+Deploying on an appliance follows the same rule: build the image on a host matching the
+appliance's architecture and run it there. Note the stack is three services
+(`radius` + `web` + `postgres`) orchestrated with Compose, so the natural target is a
+small Linux box running Docker (Raspberry Pi, mini-PC) rather than a router's built-in
+single-container runtime.
+
 ## License
 
-[MIT](LICENSE) © 2026 Alek M
+[MIT](LICENSE) © 2026 Alek M — RADIX's own code. FreeRADIUS (GPLv2) and the other
+packages pulled in at build time remain under their respective upstream licenses.
