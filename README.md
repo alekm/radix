@@ -15,6 +15,12 @@ relevant one per vendor.
 It runs in-process inside FreeRADIUS via `rlm_python3` (no extra network hop) and
 ships with a small web UI for managing accounts, keys, and viewing auth logs.
 
+<p align="center">
+  <img src="docs/radix-dash.png" alt="RADIX dashboard — auth, sessions, throughput, and per-vendor/SSID breakdowns" width="900">
+  <br>
+  <em>Built-in dashboard: auth rate &amp; cache hits, live sessions and throughput, top talkers, and per-vendor/SSID breakdowns.</em>
+</p>
+
 ```mermaid
 flowchart LR
     client["Wi-Fi client"] -->|associate| ap["AP"]
