@@ -148,12 +148,29 @@ Omada sends **two** RADIUS requests per connection, and both must Accept:
 If MAC auth is rejected, the AP can't bootstrap the 4-way handshake even when the
 PPSK request would succeed.
 
+### Ruckus eDPSK specifics
+
+Configure the WLAN for **eDPSK (external DPSK)** with RADIX as the external RADIUS
+server (auth `1812`, accounting `1813`). The AP forwards the 4-way-handshake EAPOL
+frame; RADIX verifies the MIC and returns the PMK in `MS-MPPE-Recv-Key`. Verified on
+**Unleashed, Ruckus One, and SmartZone (vSZ 7.2)** — all use the same reply
+(`RUCKUS_DPSK_REPLY=vsa` is an untested fallback for any firmware that wants the
+`Ruckus-DPSK` VSA instead).
+
+- **Dynamic VLAN must be enabled** on the WLAN, or the AP ignores the RADIUS-assigned
+  VLAN and keeps clients on the WLAN's native VLAN.
+- A VLAN or key change only takes effect on a **full re-authentication**. A quick
+  reconnect reuses the AP's cached PMKID and skips RADIUS entirely, so the client keeps
+  its old VLAN/key until it fully re-auths (forget the SSID and rejoin, or otherwise
+  drop the cached PMKSA).
+
 ## Managing keys (web UI)
 
 - **Dashboard** — top-line counts, recent auth events, and analytics charts
   (see below).
 - **Accounts** — create accounts; drill in to assign or revoke PSKs (with optional VLAN).
-  A PSK's MAC bindings are learned automatically on first successful auth.
+  A PSK's MAC bindings are learned automatically on first successful auth. PSKs are shown
+  blurred (click to reveal) with a one-click copy button.
 - **Bulk** — upload a CSV (`username`, `email`, `vlan`) for one SSID; downloads the
   generated PSKs as a CSV.
 - **Settings** — RADIUS connection details to configure your APs.
