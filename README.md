@@ -36,6 +36,15 @@ flowchart LR
     ap -->|"RADIUS auth + acct"| fr
 ```
 
+## Scope
+
+RADIX is a self-hosted lab/hobbyist tool for per-user PSK authentication. It
+deliberately stops at the standard RADIUS layer — it verifies the handshake,
+hands back key material, and optionally assigns a VLAN. It has **no** captive-portal
+onboarding, tenant/occupancy management, billing, cloud orchestration, or commercial
+support. If you need a supported, production-grade enterprise solution with those
+capabilities, evaluate the commercial products in this space.
+
 ## How it works
 
 When a client associates, the AP performs the WPA2-PSK 4-way handshake and relays
