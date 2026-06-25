@@ -124,29 +124,38 @@ def test_extract_openwifi():
     assert anonce_hex == 'cafe'
 
 
-def test_extract_ruckus_slices_packed_attr():
-    anonce  = 'ab' * 32                       # 64 hex chars at offset 22
-    msg_len = 5
-    body    = 'cd' * (msg_len + 4)            # (msg_len*2 + 8) hex chars at offset 90
-    packed  = (
-        '00' * 11 +                           # offsets 0..21
-        anonce +                              # 22..85
-        '00' * 2 +                            # 86..89
-        body +                                # 90..
-        '00' * 50                             # padding past msg_len marker
-    )
-    # Patch the msg_len marker (offset 96, 2 hex chars) to match `body` length.
-    packed = packed[:96] + f'{msg_len:02x}' + packed[98:]
+# Real Access-Request captured from a Ruckus R770 (Unleashed 200.19) eDPSK
+# association. FreeRADIUS decodes VSA 25053.153 into named sub-attrs, and hands
+# octet values over as '0x...' strings.
+RUCKUS_EAPOL = '0x0203007502010a00000000000000000001e339ef17ad578625cf7e52a2163393aaec08007ac32c6d32773f17787ab9b1480000000000000000000000000000000000000000000000000000000000000000b977d1241ed4f8bbbed7500ece009d4a001630140100000fac040100000fac040100000fac020c00'
+RUCKUS_ANONCE = '0x52712532e9712ead41e0e490f387464a7f1c691f52961852be7aae569da4d93e'
+
+
+def test_extract_ruckus_reads_named_subattrs():
     attrs = {
-        'Attr-26.25053.153': packed,
-        'Ruckus-SSID': 'CorpWiFi',
-        'NAS-Identifier': 'AA-BB-CC-00-11-22',
+        'Ruckus-SSID': 'Unleashed-DPSK',
+        'Ruckus-BSSID': '0x789f6a93acd1',
+        'Ruckus-DPSK-Anonce': RUCKUS_ANONCE,
+        'Ruckus-DPSK-EAPOL-Key-Frame': RUCKUS_EAPOL,
     }
     ssid, ap_mac, eapol_hex, anonce_hex = dpsk._extract('ruckus', attrs)
-    assert ssid == 'CorpWiFi'
-    assert ap_mac == 'aa:bb:cc:00:11:22'
-    assert anonce_hex == anonce
-    assert eapol_hex == packed[90:90 + (msg_len * 2) + 8]
+    assert ssid == 'Unleashed-DPSK'
+    assert ap_mac == '78:9f:6a:93:ac:d1'
+    # '0x' stripped, lowercased, ready for bytes.fromhex().
+    assert anonce_hex == RUCKUS_ANONCE[2:]
+    assert eapol_hex == RUCKUS_EAPOL[2:]
+
+    # The frame must yield a clean SNonce @17 and MIC @81:97 (standard EAPOL-Key).
+    eapol = bytes.fromhex(eapol_hex)
+    assert len(eapol) == 121
+    assert eapol[17:49].hex() == 'e339ef17ad578625cf7e52a2163393aaec08007ac32c6d32773f17787ab9b148'
+    assert eapol[81:97].hex() == 'b977d1241ed4f8bbbed7500ece009d4a'
+
+
+def test_octet_hex_normalizes_forms():
+    assert dpsk._octet_hex('0xDEADbeef') == 'deadbeef'
+    assert dpsk._octet_hex('AA-BB-CC-00-11-22') == 'aabbcc001122'
+    assert dpsk._octet_hex(b'\xde\xad\xbe\xef') == 'deadbeef'
 
 
 def test_build_reply_vlan_uses_enum_name_not_integer():

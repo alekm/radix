@@ -11,6 +11,11 @@ _CACHE_TTL = int(os.environ.get('PMK_CACHE_TTL', 86400))
 
 PKE_LABEL = b"Pairwise key expansion\x00"
 
+# How to hand the matched PMK back to a Ruckus AP. SmartZone wants the
+# Ruckus-DPSK VSA (\x00 + PMK); ZoneDirector/Unleashed want MS-MPPE-Recv-Key
+# (= PMK, salt-encrypted by FreeRADIUS). Default targets Unleashed/ZD.
+_RUCKUS_REPLY = os.environ.get('RUCKUS_DPSK_REPLY', 'mppe').lower()
+
 
 def handle(attrs):
     """Three-tier lookup: cache → known MAC binding → brute-force MIC scan.
@@ -28,7 +33,7 @@ def handle(attrs):
         _log_err(f"RADIX extract error ({vendor}): {exc}")
         return {'reject': True}
 
-    snonce_offset = 17 if vendor == 'tplink' else 34
+    snonce_offset = 17 if vendor in ('tplink', 'ruckus') else 34
 
     # Any DB/crypto failure here is fail-closed: we cannot verify, so reject —
     # but reset the pool so a dropped connection doesn't poison later requests.
@@ -136,7 +141,7 @@ def _detect_vendor(attrs):
         return 'openwifi'
     if 'TPLink-Authentication-FindKey' in attrs:
         return 'tplink'
-    if 'Attr-26.25053.153' in attrs:
+    if 'Ruckus-DPSK-EAPOL-Key-Frame' in attrs:
         return 'ruckus'
     return None
 
@@ -172,6 +177,18 @@ def _tplink_parse(attrs):
 
 # -- attribute extraction -----------------------------------------------------
 
+def _octet_hex(v):
+    """Normalize a FreeRADIUS octets/MAC value to a bare lowercase hex string.
+    rlm_python3 hands octet attrs over as '0x...' strings (not bytes); MACs may
+    carry '-' or ':' separators."""
+    if isinstance(v, (bytes, bytearray)):
+        return bytes(v).hex()
+    s = str(v)
+    if s[:2].lower() == '0x':
+        s = s[2:]
+    return s.replace(' ', '').replace('-', '').replace(':', '').lower()
+
+
 def _extract(vendor, attrs):
     """Return (ssid, ap_mac, eapol_hex, anonce_hex) for the detected vendor.
 
@@ -188,12 +205,15 @@ def _extract(vendor, attrs):
         return ssid, ap_mac, (eapol.hex() if eapol else ''), anonce_hex
 
     if vendor == 'ruckus':
-        packed     = attrs['Attr-26.25053.153']
-        msg_len    = int(packed[96:98], 16)
-        eapol_hex  = packed[90:90 + (msg_len * 2) + 8]
-        anonce_hex = packed[22:22 + 64]
+        # Unleashed/ZD eDPSK: FreeRADIUS decodes the DPSK blob (VSA 25053.153)
+        # into named sub-attrs via the bundled dictionary.ruckus, so we read them
+        # directly instead of slicing a packed hex string. The EAPOL frame is
+        # message 2 of the 4-way handshake (SNonce @17, MIC @81:97).
         ssid       = attrs['Ruckus-SSID']
-        ap_mac     = attrs['NAS-Identifier'].lower().replace('-', ':')
+        ap_hex     = _octet_hex(attrs['Ruckus-BSSID'])
+        ap_mac     = ':'.join(ap_hex[i:i + 2] for i in range(0, len(ap_hex), 2))
+        eapol_hex  = _octet_hex(attrs['Ruckus-DPSK-EAPOL-Key-Frame'])
+        anonce_hex = _octet_hex(attrs['Ruckus-DPSK-Anonce'])
         return ssid, ap_mac, eapol_hex, anonce_hex
 
     raise ValueError(f"unknown vendor {vendor!r}")
@@ -260,9 +280,13 @@ def _build_reply(vendor, pmk, psk, vlan_id):
     elif vendor == 'tplink':
         return _build_tplink_reply(psk, vlan_id, pmk=pmk)
     elif vendor == 'ruckus':
-        # SZ uses Ruckus-DPSK; ZD/Unleashed uses MS-MPPE-Recv-Key.
-        # TODO: distinguish SZ vs ZD via a request attribute.
-        reply['Ruckus-DPSK'] = bytes([0]) + pmk
+        # Hand the matched PMK back so the AP can finish the handshake. Carrier
+        # attribute differs by platform (see _RUCKUS_REPLY); MS-MPPE-Recv-Key is
+        # salt-encrypted by FreeRADIUS using the shared secret.
+        if _RUCKUS_REPLY == 'vsa':
+            reply['Ruckus-DPSK'] = b'\x00' + pmk
+        else:
+            reply['MS-MPPE-Recv-Key'] = pmk
 
     if vlan_id:
         reply.update(_vlan_attrs(vlan_id))

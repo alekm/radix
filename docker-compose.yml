@@ -11,6 +11,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       RADIUS_SECRET: ${RADIUS_SECRET}
       PMK_CACHE_TTL: ${PMK_CACHE_TTL:-86400}
+      RADIX_DEBUG: ${RADIX_DEBUG:-}
       TZ: ${TZ:-America/Kentucky/Louisville}
       PGTZ: ${TZ:-America/Kentucky/Louisville}
     depends_on:

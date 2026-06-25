@@ -2,10 +2,11 @@
   <img src="web/static/icons/og-banner.png" alt="RADIX" width="640">
 </p>
 
-RADIX is a **FreeRADIUS per-user PSK authentication backend** for enterprise Wi-Fi.
-Each user (or device) gets their own pre-shared key on a single shared SSID; RADIX
-verifies the 4-way-handshake material the AP forwards over RADIUS and hands back the
-matching key material, plus an optional per-key VLAN.
+RADIX is a **FreeRADIUS per-user PSK authentication backend** — a lightweight AAA
+layer for home labs and small networks running WPA2/WPA3-PSK Wi-Fi. Each user (or
+device) gets their own pre-shared key on a single shared SSID; RADIX verifies the
+4-way-handshake material the AP forwards over RADIUS and hands back the matching key
+material, plus an optional per-key VLAN. It runs comfortably on a Raspberry Pi.
 
 Per-user PSK goes by a different name on each platform — TP-Link Omada **PPSK**,
 Ruckus **DPSK**, Cisco/Meraki **iPSK**, Aruba **MPSK** — and RADIX speaks the
@@ -62,7 +63,6 @@ a key is created and stored base64-encoded, so the auth path never runs PBKDF2.
 | `web/` | FastAPI admin UI (`main.py`, `db.py`, templates, static) |
 | `Dockerfile` / `web/Dockerfile` | Container images for the RADIUS and web services |
 | `docker-compose.yml` | The full stack: `radius`, `web`, `postgres` |
-| `deploy.sh` | Syncs the source to the deploy dir, rebuilds, and applies migrations |
 | `tests/` | `pytest` unit tests for the crypto / parsing / rate-limit logic |
 | `mcp/` | Standalone MCP server (stdio) exposing RADIX management as AI-assistant tools via the JSON API (see `mcp/README.md`) |
 
@@ -84,14 +84,7 @@ Point your AP/controller's external RADIUS server at the host on port 1812 using
 shared secret from `RADIUS_SECRET`. Then in the web UI: create an account, assign it a
 PSK on your SSID, and connect a device using that PSK.
 
-### Deploying
-
-`deploy.sh` rsyncs the working tree to `/opt/stacks/radix`, rebuilds the stack, and
-re-applies all migrations (idempotent) against the running database:
-
-```bash
-./deploy.sh
-```
+To pick up code changes later, rebuild in place: `docker compose up --build -d`.
 
 ## Configuration
 
@@ -297,7 +290,8 @@ api_clients(id, name, client_key, secret_hash, created_at, last_used_at, revoked
 
 Migrations live in `migrations/`, named `NNN_*.sql`, and are **idempotent**
 (safe to re-apply). On a fresh database, PostgreSQL runs them all in order via
-`docker-entrypoint-initdb.d`. On an existing database, `deploy.sh` re-applies them.
+`docker-entrypoint-initdb.d`. On an existing database, re-apply them by piping each
+file through `psql` (or just `docker compose up --build -d` if your deploy does so).
 To add a schema change, drop in the next-numbered file — never edit an applied one.
 
 ## Security notes
