@@ -30,7 +30,7 @@ services:
   web:
     build: ./web
     ports:
-      - "8050:8000"
+      - "${WEB_PORT:-8050}:8000"
     environment:
       DB_HOST: postgres
       DB_NAME: radix

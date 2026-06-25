@@ -83,7 +83,8 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-- Web UI: <http://localhost:8050> (HTTP Basic auth — `ADMIN_USER` / `ADMIN_PASSWORD`)
+- Web UI: <http://localhost:8050> (HTTP Basic auth — `ADMIN_USER` / `ADMIN_PASSWORD`).
+  Change the published port with `WEB_PORT` in `.env` (e.g. `WEB_PORT=80`).
 - RADIUS auth: UDP `1812`, accounting: UDP `1813`
 
 Point your AP/controller's external RADIUS server at the host on port 1812 using the
@@ -105,6 +106,7 @@ All configuration is via environment variables (see `.env.example`).
 | `RADIX_DEBUG` | off | radius | When truthy, logs full request + reply attributes (info level) |
 | `RUCKUS_DPSK_REPLY` | `mppe` | radius | Ruckus PMK reply form: `mppe` (Unleashed/ZD) or `vsa` (SmartZone) |
 | `RADIUS_HOST` `RADIUS_PORT` | `—` / `1812` | web | Shown on the Settings page so you can configure APs |
+| `WEB_PORT` | `8050` | web | Host port the web UI is published on (container listens on `8000` internally) |
 | `ADMIN_USER` | `admin` | web | Admin UI username |
 | `ADMIN_PASSWORD` | — | web | Admin UI password. **If unset, the UI refuses to serve.** |
 | `RETENTION_DAYS` | `90` | web | Daily purge of `auth_log` / `acct_sessions` / `metrics_rollup` older than this; `0` disables |
