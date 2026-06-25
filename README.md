@@ -3,7 +3,7 @@
 </p>
 
 RADIX is a **FreeRADIUS per-user PSK authentication backend** — a lightweight AAA
-layer for home labs and small networks running WPA2/WPA3-PSK Wi-Fi. Each user (or
+layer for home labs and small networks running WPA2-PSK Wi-Fi. Each user (or
 device) gets their own pre-shared key on a single shared SSID; RADIX verifies the
 4-way-handshake material the AP forwards over RADIUS and hands back the matching key
 material, plus an optional per-key VLAN. It runs comfortably on a Raspberry Pi.
