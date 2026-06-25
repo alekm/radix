@@ -97,6 +97,7 @@ All configuration is via environment variables (see `.env.example`).
 | `RADIUS_SECRET` | — | both | RADIUS shared secret (web UI displays it on the Settings page) |
 | `PMK_CACHE_TTL` | `86400` | radius | Tier-1 cache lifetime, seconds |
 | `RADIX_DEBUG` | off | radius | When truthy, logs full request + reply attributes (info level) |
+| `RUCKUS_DPSK_REPLY` | `mppe` | radius | Ruckus PMK reply form: `mppe` (Unleashed/ZD) or `vsa` (SmartZone) |
 | `RADIUS_HOST` `RADIUS_PORT` | `—` / `1812` | web | Shown on the Settings page so you can configure APs |
 | `ADMIN_USER` | `admin` | web | Admin UI username |
 | `ADMIN_PASSWORD` | — | web | Admin UI password. **If unset, the UI refuses to serve.** |

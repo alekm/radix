@@ -9,9 +9,17 @@ services:
       DB_NAME: radix
       DB_USER: radix
       DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_MAX: ${DB_POOL_MAX:-16}
       RADIUS_SECRET: ${RADIUS_SECRET}
       PMK_CACHE_TTL: ${PMK_CACHE_TTL:-86400}
       RADIX_DEBUG: ${RADIX_DEBUG:-}
+      RUCKUS_DPSK_REPLY: ${RUCKUS_DPSK_REPLY:-mppe}
+      RADIX_TIER3_RATE: ${RADIX_TIER3_RATE:-50}
+      RADIX_TIER3_BURST: ${RADIX_TIER3_BURST:-100}
+      RADIX_TIER3_MAX_FAILURES: ${RADIX_TIER3_MAX_FAILURES:-10}
+      RADIX_TIER3_FAIL_WINDOW: ${RADIX_TIER3_FAIL_WINDOW:-60}
+      RADIX_TIER3_COOLDOWN: ${RADIX_TIER3_COOLDOWN:-120}
+      RADIX_TIER3_MAX_TRACKED: ${RADIX_TIER3_MAX_TRACKED:-10000}
       TZ: ${TZ:-America/Kentucky/Louisville}
       PGTZ: ${TZ:-America/Kentucky/Louisville}
     depends_on:
@@ -30,10 +38,13 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       RADIUS_SECRET: ${RADIUS_SECRET}
       RADIUS_HOST: ${RADIUS_HOST:-}
-      RADIUS_PORT: 1812
+      RADIUS_PORT: ${RADIUS_PORT:-1812}
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       RETENTION_DAYS: ${RETENTION_DAYS:-90}
+      RETENTION_INTERVAL_HOURS: ${RETENTION_INTERVAL_HOURS:-24}
+      ANALYTICS_INTERVAL_SECONDS: ${ANALYTICS_INTERVAL_SECONDS:-300}
+      ANALYTICS_WINDOW_DAYS: ${ANALYTICS_WINDOW_DAYS:-7}
       SESSION_STALE_MINUTES: ${SESSION_STALE_MINUTES:-30}
       TZ: ${TZ:-America/Kentucky/Louisville}
       PGTZ: ${TZ:-America/Kentucky/Louisville}
@@ -53,7 +64,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Fresh installs: postgres runs every migration in order on first init.
-      # Existing installs: deploy.sh re-applies them (all migrations are idempotent).
+      # Existing installs: re-apply new migrations manually with psql (all idempotent).
       - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U radix"]
