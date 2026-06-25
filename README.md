@@ -96,7 +96,7 @@ All configuration is via environment variables (see `.env.example`).
 | `DB_POOL_MAX` | `16` | radius | Max pooled DB connections |
 | `RADIUS_SECRET` | — | both | RADIUS shared secret (web UI displays it on the Settings page) |
 | `PMK_CACHE_TTL` | `86400` | radius | Tier-1 cache lifetime, seconds |
-| `RADIX_DEBUG` | off | radius | When truthy, logs request attribute names at debug level |
+| `RADIX_DEBUG` | off | radius | When truthy, logs full request + reply attributes (info level) |
 | `RADIUS_HOST` `RADIUS_PORT` | `—` / `1812` | web | Shown on the Settings page so you can configure APs |
 | `ADMIN_USER` | `admin` | web | Admin UI username |
 | `ADMIN_PASSWORD` | — | web | Admin UI password. **If unset, the UI refuses to serve.** |
@@ -104,7 +104,7 @@ All configuration is via environment variables (see `.env.example`).
 | `RETENTION_INTERVAL_HOURS` | `24` | web | How often the retention sweep runs |
 | `ANALYTICS_INTERVAL_SECONDS` | `300` | web | How often dashboard analytics are sampled + recomputed |
 | `ANALYTICS_WINDOW_DAYS` | `7` | web | Time window the dashboard charts cover |
-| `SESSION_STALE_MINUTES` | `30` | web | A session counts as active only if updated within this window (set ≥ 2× the AP's interim interval; `0` disables, requires interim accounting to be enabled on the AP) |
+| `SESSION_STALE_MINUTES` | `30` | web | A session counts as active only if updated within this window; needs interim accounting on the AP (set ≥ 2× the interim interval). `0` disables the check (active = any open session) |
 | `RADIX_TIER3_RATE` | `50` | radius | Global Tier-3 scans/sec (token-bucket refill) |
 | `RADIX_TIER3_BURST` | `100` | radius | Token-bucket capacity |
 | `RADIX_TIER3_MAX_FAILURES` | `10` | radius | Per-MAC failures before cooldown |
@@ -120,7 +120,7 @@ Vendor is detected by which attribute is present in the Access-Request.
 |--------|-----------|------|--------|-------------|--------|---------------|--------|
 | TP-Link Omada | `TPLink-Authentication-FindKey` | sub-TLV 3 | sub-TLV 6 (radio BSSID), fallback 4 | sub-TLV 1 | sub-TLV 2 | 17 | **Working** |
 | OpenWiFi | `FreeRADIUS-802.1X-Anonce` | `Called-Station-Id` after `:` | `Called-Station-Id` before `:` | `FreeRADIUS-802.1X-EAPoL-Key-Msg` | `FreeRADIUS-802.1X-Anonce` | 34 | Implemented |
-| Ruckus (SZ / ZD / Unleashed) | `Attr-26.25053.153` | `Ruckus-SSID` | `NAS-Identifier` | packed attr | offset 22 | 124 | Scaffolded, **untested** |
+| Ruckus eDPSK | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-SSID` | `Ruckus-BSSID` | `Ruckus-DPSK-EAPOL-Key-Frame` | `Ruckus-DPSK-Anonce` | 17 | **Unleashed: working**; SmartZone / Ruckus One: untested |
 
 ### Reply attributes on success
 
@@ -128,8 +128,8 @@ Vendor is detected by which attribute is present in the Access-Request.
 |--------|-----------|-------|
 | OpenWiFi | `Tunnel-Password` | Raw PSK string |
 | TP-Link | `TPLink-EAPOL-Found-PMK` | Raw 32-byte PMK (+ `Tunnel-Password` + VLAN attrs) |
-| Ruckus SZ | `Ruckus-DPSK` | `\x00` + 32-byte PMK |
-| Ruckus ZD/Unleashed | `MS-MPPE-Recv-Key` | 32-byte PMK |
+| Ruckus Unleashed (default) | `MS-MPPE-Recv-Key` | 32-byte PMK |
+| Ruckus SZ (`RUCKUS_DPSK_REPLY=vsa`) | `Ruckus-DPSK` | `\x00` + 32-byte PMK |
 
 VLAN assignment (all vendors) uses `Tunnel-Type=13`, `Tunnel-Medium-Type=IEEE-802`,
 `Tunnel-Private-Group-Id=<vlan>`. Note: `Tunnel-Medium-Type` must be the enum name
@@ -140,8 +140,8 @@ VLAN assignment (all vendors) uses `Tunnel-Type=13`, `Tunnel-Medium-Type=IEEE-80
 Omada sends **two** RADIUS requests per connection, and both must Accept:
 
 1. **MAC auth** (no PPSK attrs; `NAS-Identifier` carries a `TP-Link` prefix).
-   - Known device (MAC bound in DB): Accept with `Tunnel-Password` = PSK + VLAN.
-   - Unknown device (first time): Accept with VLAN only — the PSK arrives via the PPSK blob.
+   - Known device (MAC bound in DB): Accept with `Tunnel-Password` = PSK (+ VLAN attrs if the PSK has one).
+   - Unknown device (first time): Accept with **no reply attributes** — no VLAN override, so the AP keeps the client on the SSID's own network; the PSK arrives via the PPSK blob.
 2. **PPSK blob** (`TPLink-Authentication-FindKey` present): Accept with the PMK reply above.
 
 If MAC auth is rejected, the AP can't bootstrap the 4-way handshake even when the
@@ -290,8 +290,9 @@ api_clients(id, name, client_key, secret_hash, created_at, last_used_at, revoked
 
 Migrations live in `migrations/`, named `NNN_*.sql`, and are **idempotent**
 (safe to re-apply). On a fresh database, PostgreSQL runs them all in order via
-`docker-entrypoint-initdb.d`. On an existing database, re-apply them by piping each
-file through `psql` (or just `docker compose up --build -d` if your deploy does so).
+`docker-entrypoint-initdb.d`. On an existing database they are **not** auto-applied —
+pipe each new file through `psql` (e.g. `docker compose exec -T postgres psql -U radix
+-d radix < migrations/NNN_name.sql`).
 To add a schema change, drop in the next-numbered file — never edit an applied one.
 
 ## Security notes
@@ -325,7 +326,7 @@ manually against a throwaway `postgres:16` container (see commit history).
 
 - **Logs:** `docker compose logs -f radius` (FreeRADIUS + Python tracebacks),
   `docker compose logs -f web`.
-- **Verbose RADIUS:** set `RADIX_DEBUG=1` to log request attribute names, or run
+- **Verbose RADIUS:** set `RADIX_DEBUG=1` to log full request + reply attributes, or run
   FreeRADIUS with `-X` for full debug.
 - **A device won't connect:** check the auth log and confirm the SSID on the PSK
   matches exactly (the PMK is salted with the SSID), and that the VLAN exists.
